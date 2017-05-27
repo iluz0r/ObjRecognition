@@ -16,8 +16,8 @@
 using namespace cv;
 using namespace std;
 
-static string ann = "annotations/deathcircle0.txt";
-static string video = "video/deathcircle0.mov";
+static string ann = "annotations/deathcircle1.txt";
+static string video = "video/deathcircle1.mov";
 static string ooi = "Pedestrian";
 static string outputDir = "pedestrians_stanford/";
 //static int sampleWidth = 40;
