@@ -75,7 +75,7 @@ void loadImages(vector<Mat> &images, int &pedSize, int &vehiclesSize,
 	for (unsigned int i = 0; i < pedFilesNames.size(); i++) {
 		Mat img = imread(pedFilesNames[i], CV_LOAD_IMAGE_GRAYSCALE);
 		Mat resizedImg;
-		resize(img, resizedImg, Size(100, 100));
+		resize(img, resizedImg, Size(60, 60));
 		images.push_back(resizedImg);
 	}
 	pedSize = pedFilesNames.size();
@@ -85,20 +85,20 @@ void loadImages(vector<Mat> &images, int &pedSize, int &vehiclesSize,
 	for (unsigned int i = 0; i < vehFilesNames.size(); i++) {
 		Mat img = imread(vehFilesNames[i], CV_LOAD_IMAGE_GRAYSCALE);
 		Mat resizedImg;
-		resize(img, resizedImg, Size(100, 100));
+		resize(img, resizedImg, Size(60, 60));
 		images.push_back(resizedImg);
 	}
 	vehiclesSize = vehFilesNames.size();
 }
 
-int main2(int argc, char** argv) {
+int main(int argc, char** argv) {
 	// The 2nd and 4th params are fixed. Choose 1st and 3th such that (1st-2nd)/3th = 0
-	HOGDescriptor hog(Size(100, 100), Size(16, 16), Size(4, 4), Size(8, 8), 9, -1, 0.2, true, 64);
+	HOGDescriptor hog(Size(60, 60), Size(16, 16), Size(4, 4), Size(8, 8), 9, -1, 0.2, true, 64);
 
 	vector<Mat> trainImg;
 	int trainPedSize, trainVehSize;
-	loadImages(trainImg, trainPedSize, trainVehSize, "train_pedestrians/*.jpg",
-			"train_vehicles/*.jpg");
+	loadImages(trainImg, trainPedSize, trainVehSize, "pedestrians_stanford/*.jpg",
+			"vehicles_stanford/*.jpg");
 
 	vector<Mat> testImg;
 	int testPedSize, testVehSize;

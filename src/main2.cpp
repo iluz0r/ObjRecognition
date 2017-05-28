@@ -16,10 +16,10 @@
 using namespace cv;
 using namespace std;
 
-static string ann = "annotations/deathcircle1.txt";
-static string video = "video/deathcircle1.mov";
+static string ann = "annotations/deathcircle3.txt";
+static string video = "video/deathcircle3.mov";
 static string ooi = "Pedestrian";
-static string outputDir = "pedestrians_stanford/";
+static string outputDir = "test_pedestrians/";
 //static int sampleWidth = 40;
 //static int sampleHeight = 40;
 
@@ -27,7 +27,7 @@ typedef pair<Mat, String> Params;
 
 void rclick_callback(int, int, int, int, void*);
 
-int main(int argc, char** argv) {
+int main2(int argc, char** argv) {
 	ifstream infile(ann.c_str());
 	VideoCapture cap(video);
 
