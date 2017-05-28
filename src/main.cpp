@@ -97,8 +97,8 @@ int main(int argc, char** argv) {
 
 	vector<Mat> trainImg;
 	int trainPedSize, trainVehSize;
-	loadImages(trainImg, trainPedSize, trainVehSize, "pedestrians_stanford/*.jpg",
-			"vehicles_stanford/*.jpg");
+	loadImages(trainImg, trainPedSize, trainVehSize, "train_pedestrians/*.jpg",
+			"train_vehicles/*.jpg");
 
 	vector<Mat> testImg;
 	int testPedSize, testVehSize;

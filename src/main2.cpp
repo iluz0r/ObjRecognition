@@ -16,10 +16,10 @@
 using namespace cv;
 using namespace std;
 
-static string ann = "annotations/deathcircle3.txt";
-static string video = "video/deathcircle3.mov";
-static string ooi = "Pedestrian";
-static string outputDir = "test_pedestrians/";
+static string ann = "annotations/nexus11.txt";
+static string video = "video/nexus11.mov";
+static string ooi = "Car";
+static string outputDir = "test_vehicles/";
 //static int sampleWidth = 40;
 //static int sampleHeight = 40;
 
