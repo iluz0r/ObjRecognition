@@ -15,6 +15,8 @@
 using namespace cv;
 using namespace std;
 
+#define LOAD_SVM 1
+
 void SVMevaluate(Mat &testResponse, float &count, float &accuracy,
 		vector<int> &testLabels) {
 
@@ -26,21 +28,19 @@ void SVMevaluate(Mat &testResponse, float &count, float &accuracy,
 	accuracy = (count / testResponse.rows) * 100;
 }
 
-void SVMtrain(Mat &trainMat, Mat &testMat, vector<int> &trainLabels,
-		Mat &testResponse) {
+void SVMtrain(CvSVM &svm, Mat &trainMat, vector<int> &trainLabels) {
 	CvSVMParams params;
 	params.svm_type = CvSVM::C_SVC;
 	params.kernel_type = CvSVM::LINEAR;
-	CvSVM svm;
-	CvMat tryMat = trainMat;
+	CvMat trainingMat = trainMat;
 	Mat trainLabelsMat(trainLabels.size(), 1, CV_32FC1);
 
 	for (unsigned int i = 0; i < trainLabels.size(); i++) {
 		trainLabelsMat.at<float>(i, 0) = trainLabels[i];
 	}
-	CvMat tryMat_2 = trainLabelsMat;
-	svm.train(&tryMat, &tryMat_2, Mat(), Mat(), params);
-	svm.predict(testMat, testResponse);
+	CvMat trainingLabelsMat = trainLabelsMat;
+	svm.train(&trainingMat, &trainingLabelsMat, Mat(), Mat(), params);
+	svm.save("svm_classifier.xml");
 }
 
 void convertVectorToMatrix(vector<vector<float> > &hogResult, Mat &mat) {
@@ -75,7 +75,7 @@ void loadImages(vector<Mat> &images, int &pedSize, int &vehiclesSize,
 	for (unsigned int i = 0; i < pedFilesNames.size(); i++) {
 		Mat img = imread(pedFilesNames[i], CV_LOAD_IMAGE_GRAYSCALE);
 		Mat resizedImg;
-		resize(img, resizedImg, Size(60, 60));
+		resize(img, resizedImg, Size(100, 100));
 		images.push_back(resizedImg);
 	}
 	pedSize = pedFilesNames.size();
@@ -85,7 +85,7 @@ void loadImages(vector<Mat> &images, int &pedSize, int &vehiclesSize,
 	for (unsigned int i = 0; i < vehFilesNames.size(); i++) {
 		Mat img = imread(vehFilesNames[i], CV_LOAD_IMAGE_GRAYSCALE);
 		Mat resizedImg;
-		resize(img, resizedImg, Size(60, 60));
+		resize(img, resizedImg, Size(100, 100));
 		images.push_back(resizedImg);
 	}
 	vehiclesSize = vehFilesNames.size();
@@ -93,40 +93,48 @@ void loadImages(vector<Mat> &images, int &pedSize, int &vehiclesSize,
 
 int main(int argc, char** argv) {
 	// The 2nd and 4th params are fixed. Choose 1st and 3th such that (1st-2nd)/3th = 0
-	HOGDescriptor hog(Size(60, 60), Size(16, 16), Size(4, 4), Size(8, 8), 9, -1, 0.2, true, 64);
-
-	vector<Mat> trainImg;
-	int trainPedSize, trainVehSize;
-	loadImages(trainImg, trainPedSize, trainVehSize, "train_pedestrians/*.jpg",
-			"train_vehicles/*.jpg");
+	HOGDescriptor hog(Size(100, 100), Size(16, 16), Size(4, 4), Size(8, 8), 9,
+			-1, 0.2, true, 64);
 
 	vector<Mat> testImg;
 	int testPedSize, testVehSize;
 	loadImages(testImg, testPedSize, testVehSize, "test_pedestrians/*.jpg",
 			"test_vehicles/*.jpg");
 
-	vector<int> trainLabels;
-	loadLabels(trainLabels, trainPedSize, trainVehSize);
-
 	vector<int> testLabels;
 	loadLabels(testLabels, testPedSize, testVehSize);
-
-	vector<vector<float> > trainHOG;
-	computeHOG(trainHOG, trainImg, hog);
 
 	vector<vector<float> > testHOG;
 	computeHOG(testHOG, testImg, hog);
 
-	int descriptorSize = trainHOG[0].size();
-	Mat trainMat(trainHOG.size(), descriptorSize, CV_32FC1);
-	convertVectorToMatrix(trainHOG, trainMat);
-
-	descriptorSize = testHOG[0].size();
+	int descriptorSize = testHOG[0].size();
 	Mat testMat(testHOG.size(), descriptorSize, CV_32FC1);
 	convertVectorToMatrix(testHOG, testMat);
 
 	Mat testResponse;
-	SVMtrain(trainMat, testMat, trainLabels, testResponse);
+	CvSVM svm;
+
+	if (LOAD_SVM) {
+		svm.load("svm_classifier.xml");
+	} else {
+		vector<Mat> trainImg;
+		int trainPedSize, trainVehSize;
+		loadImages(trainImg, trainPedSize, trainVehSize,
+				"train_pedestrians/*.jpg", "train_vehicles/*.jpg");
+
+		vector<int> trainLabels;
+		loadLabels(trainLabels, trainPedSize, trainVehSize);
+
+		vector<vector<float> > trainHOG;
+		computeHOG(trainHOG, trainImg, hog);
+
+		descriptorSize = trainHOG[0].size();
+		Mat trainMat(trainHOG.size(), descriptorSize, CV_32FC1);
+		convertVectorToMatrix(trainHOG, trainMat);
+		SVMtrain(svm, trainMat, trainLabels);
+	}
+
+	svm.predict(testMat, testResponse);
 
 	float count = 0;
 	float accuracy = 0;
