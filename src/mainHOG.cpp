@@ -68,7 +68,7 @@ void loadLabels(vector<int> &labels, int pedSize, int vehiclesSize) {
 	}
 }
 
-void loadImages(vector<Mat> &images, int &pedSize, int &vehiclesSize,
+void loadImages2(vector<Mat> &images, int &pedSize, int &vehiclesSize,
 		String pedPath, String vehPath) {
 	vector<String> pedFilesNames;
 	glob(pedPath, pedFilesNames, true);
@@ -91,14 +91,14 @@ void loadImages(vector<Mat> &images, int &pedSize, int &vehiclesSize,
 	vehiclesSize = vehFilesNames.size();
 }
 
-int main(int argc, char** argv) {
+int main3(int argc, char** argv) {
 	// The 2nd and 4th params are fixed. Choose 1st and 3th such that (1st-2nd)/3th = 0
 	HOGDescriptor hog(Size(100, 100), Size(16, 16), Size(4, 4), Size(8, 8), 9,
 			-1, 0.2, true, 64);
 
 	vector<Mat> testImg;
 	int testPedSize, testVehSize;
-	loadImages(testImg, testPedSize, testVehSize, "test_pedestrians/*.jpg",
+	loadImages2(testImg, testPedSize, testVehSize, "test_pedestrians/*.jpg",
 			"test_vehicles/*.jpg");
 
 	vector<int> testLabels;
@@ -119,7 +119,7 @@ int main(int argc, char** argv) {
 	} else {
 		vector<Mat> trainImg;
 		int trainPedSize, trainVehSize;
-		loadImages(trainImg, trainPedSize, trainVehSize,
+		loadImages2(trainImg, trainPedSize, trainVehSize,
 				"train_pedestrians/*.jpg", "train_vehicles/*.jpg");
 
 		vector<int> trainLabels;
