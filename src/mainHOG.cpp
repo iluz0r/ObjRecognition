@@ -118,12 +118,12 @@ int main(int argc, char** argv) {
 		svm.load("svm_classifier.xml");
 	} else {
 		vector<Mat> trainImg;
-		int trainPedSize, trainVehSize;
-		loadImages(trainImg, trainPedSize, trainVehSize,
+		int trainPedNum, trainVehNum;
+		loadImages(trainImg, trainPedNum, trainVehNum,
 				"train_pedestrians/*.jpg", "train_vehicles/*.jpg");
 
 		vector<int> trainLabels;
-		loadLabels(trainLabels, trainPedSize, trainVehSize);
+		loadLabels(trainLabels, trainPedNum, trainVehNum);
 
 		vector<vector<float> > trainHOG;
 		computeHOG(trainHOG, trainImg, hog);
