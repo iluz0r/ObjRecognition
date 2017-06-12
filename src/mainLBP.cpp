@@ -13,7 +13,7 @@
 using namespace cv;
 using namespace std;
 
-void OLBP(const Mat &src, Mat &dst) {
+void OLBP2(const Mat &src, Mat &dst) {
 	dst = Mat::zeros(src.rows - 2, src.cols - 2, CV_8UC1);
 	for (int i = 1; i < src.rows - 1; i++) {
 		for (int j = 1; j < src.cols - 1; j++) {
@@ -32,7 +32,7 @@ void OLBP(const Mat &src, Mat &dst) {
 	}
 }
 
-void ELBP(const Mat &src, Mat &dst, int radius, int neighbors) {
+void ELBP2(const Mat &src, Mat &dst, int radius, int neighbors) {
 	neighbors = max(min(neighbors, 31), 1); // set bounds...
 	// Note: alternatively you can switch to the new OpenCV Mat_
 	// type system to define an unsigned int matrix... I am probably
@@ -75,7 +75,7 @@ void ELBP(const Mat &src, Mat &dst, int radius, int neighbors) {
 	}
 }
 
-void loadImages(vector<Mat> &images, int &pedSize, int &vehiclesSize,
+void loadImages2(vector<Mat> &images, int &pedSize, int &vehiclesSize,
 		String pedPath, String vehPath) {
 	vector<String> pedFilesNames;
 	glob(pedPath, pedFilesNames, true);
@@ -98,10 +98,10 @@ void loadImages(vector<Mat> &images, int &pedSize, int &vehiclesSize,
 	vehiclesSize = vehFilesNames.size();
 }
 
-int main(int argc, char** argv) {
+int main2(int argc, char** argv) {
 	vector<Mat> trainImg;
 	int trainPedSize, trainVehSize;
-	loadImages(trainImg, trainPedSize, trainVehSize, "train_pedestrians/*.jpg",
+	loadImages2(trainImg, trainPedSize, trainVehSize, "train_pedestrians/*.jpg",
 			"train_vehicles/*.jpg");
 
 	for(unsigned int i = 0; i < trainImg.size(); i++) {
@@ -110,8 +110,8 @@ int main(int argc, char** argv) {
 		trainImg[i].convertTo(trainImgInt, CV_32SC1);
 
 		Mat lbp;
-		ELBP(trainImgInt, lbp, 1, 16);
-		lbp.convertTo(resultLbp, CV_8UC1);
+		ELBP2(trainImgInt, lbp, 1, 16);
+		normalize(lbp, lbp, 0, 255, NORM_MINMAX, CV_8UC1);
 
 		stringstream ss;
 		ss << "LBP " << i;

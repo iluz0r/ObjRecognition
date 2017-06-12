@@ -15,7 +15,7 @@
 using namespace cv;
 using namespace std;
 
-#define LOAD_SVM 1
+#define LOAD_SVM 0
 
 void SVMevaluate(Mat &testResponse, float &count, float &accuracy,
 		vector<int> &testLabels) {
@@ -62,13 +62,13 @@ void computeHOG(vector<vector<float> > &hogResult, vector<Mat> &img,
 	}
 }
 
-void loadLabels(vector<int> &labels, int pedSize, int vehiclesSize) {
-	for (int i = 0; i < (pedSize + vehiclesSize); i++) {
-		labels.push_back(i < pedSize ? 5 : 6); // Atm 5 means Pedestrian label and 6 means Vehicles
+void loadLabels(vector<int> &labels, int pedNum, int vehiclesNum) {
+	for (int i = 0; i < (pedNum + vehiclesNum); i++) {
+		labels.push_back(i < pedNum ? 5 : 6); // Atm 5 means Pedestrian label and 6 means Vehicles
 	}
 }
 
-void loadImages2(vector<Mat> &images, int &pedSize, int &vehiclesSize,
+void loadImages(vector<Mat> &images, int &pedNum, int &vehiclesNum,
 		String pedPath, String vehPath) {
 	vector<String> pedFilesNames;
 	glob(pedPath, pedFilesNames, true);
@@ -78,7 +78,7 @@ void loadImages2(vector<Mat> &images, int &pedSize, int &vehiclesSize,
 		resize(img, resizedImg, Size(100, 100));
 		images.push_back(resizedImg);
 	}
-	pedSize = pedFilesNames.size();
+	pedNum = pedFilesNames.size();
 
 	vector<String> vehFilesNames;
 	glob(vehPath, vehFilesNames, true);
@@ -88,21 +88,21 @@ void loadImages2(vector<Mat> &images, int &pedSize, int &vehiclesSize,
 		resize(img, resizedImg, Size(100, 100));
 		images.push_back(resizedImg);
 	}
-	vehiclesSize = vehFilesNames.size();
+	vehiclesNum = vehFilesNames.size();
 }
 
-int main3(int argc, char** argv) {
+int main(int argc, char** argv) {
 	// The 2nd and 4th params are fixed. Choose 1st and 3th such that (1st-2nd)/3th = 0
-	HOGDescriptor hog(Size(100, 100), Size(16, 16), Size(4, 4), Size(8, 8), 9,
-			-1, 0.2, true, 64);
+	HOGDescriptor hog(Size(100, 100), Size(16, 16), Size(4, 4), Size(8, 8), 9, -1,
+			0.2, true, 64);
 
 	vector<Mat> testImg;
-	int testPedSize, testVehSize;
-	loadImages2(testImg, testPedSize, testVehSize, "test_pedestrians/*.jpg",
+	int testPedNum, testVehNum;
+	loadImages(testImg, testPedNum, testVehNum, "test_pedestrians/*.jpg",
 			"test_vehicles/*.jpg");
 
 	vector<int> testLabels;
-	loadLabels(testLabels, testPedSize, testVehSize);
+	loadLabels(testLabels, testPedNum, testVehNum);
 
 	vector<vector<float> > testHOG;
 	computeHOG(testHOG, testImg, hog);
@@ -119,7 +119,7 @@ int main3(int argc, char** argv) {
 	} else {
 		vector<Mat> trainImg;
 		int trainPedSize, trainVehSize;
-		loadImages2(trainImg, trainPedSize, trainVehSize,
+		loadImages(trainImg, trainPedSize, trainVehSize,
 				"train_pedestrians/*.jpg", "train_vehicles/*.jpg");
 
 		vector<int> trainLabels;
