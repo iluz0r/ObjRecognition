@@ -33,11 +33,7 @@ void OLBP(const Mat &src, Mat &dst) {
 }
 
 void ELBP(const Mat &src, Mat &dst, int radius, int neighbors) {
-	neighbors = max(min(neighbors, 31), 1); // set bounds...
-	// Note: alternatively you can switch to the new OpenCV Mat_
-	// type system to define an unsigned int matrix... I am probably
-	// mistaken here, but I didn't see an unsigned int representation
-	// in OpenCV's classic typesystem...
+	neighbors = max(min(neighbors, 31), 1); // set bounds
 	dst = Mat::zeros(src.rows - 2 * radius, src.cols - 2 * radius, CV_32SC1);
 	for (int n = 0; n < neighbors; n++) {
 		// sample points
@@ -67,7 +63,7 @@ void ELBP(const Mat &src, Mat &dst, int radius, int neighbors) {
 						+ w4 * src.at<unsigned char>(i + cy, j + cx);
 				// we are dealing with floating point precision, so add some little tolerance
 				dst.at<unsigned int>(i - radius, j - radius) += ((t
-						> src.at<float>(i, j))
+						> src.at<unsigned char>(i, j))
 						&& (abs(t - src.at<unsigned char>(i, j))
 								> std::numeric_limits<float>::epsilon())) << n;
 			}
@@ -105,7 +101,6 @@ int main(int argc, char** argv) {
 			"train_vehicles/*.jpg");
 
 	for(unsigned int i = 0; i < trainImg.size(); i++) {
-		Mat resultLbp;
 		//resize(trainImg[i], trainImg[i], Size(), 0.5, 0.5);
 
 		Mat lbp;
