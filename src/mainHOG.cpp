@@ -15,7 +15,7 @@
 using namespace cv;
 using namespace std;
 
-#define LOAD_SVM 0
+#define LOAD_SVM 1
 
 void SVMevaluate(Mat &testResponse, float &count, float &accuracy,
 		vector<int> &testLabels) {
@@ -62,13 +62,13 @@ void computeHOG(vector<vector<float> > &hogResult, vector<Mat> &img,
 	}
 }
 
-void loadLabels(vector<int> &labels, int pedNum, int vehiclesNum) {
+void loadLabels1(vector<int> &labels, int pedNum, int vehiclesNum) {
 	for (int i = 0; i < (pedNum + vehiclesNum); i++) {
 		labels.push_back(i < pedNum ? 5 : 6); // Atm 5 means Pedestrian label and 6 means Vehicles
 	}
 }
 
-void loadImages(vector<Mat> &images, int &pedNum, int &vehiclesNum,
+void loadImages1(vector<Mat> &images, int &pedNum, int &vehiclesNum,
 		String pedPath, String vehPath) {
 	vector<String> pedFilesNames;
 	glob(pedPath, pedFilesNames, true);
@@ -91,18 +91,18 @@ void loadImages(vector<Mat> &images, int &pedNum, int &vehiclesNum,
 	vehiclesNum = vehFilesNames.size();
 }
 
-int main(int argc, char** argv) {
+int main1(int argc, char** argv) {
 	// The 2nd and 4th params are fixed. Choose 1st and 3th such that (1st-2nd)/3th = 0
 	HOGDescriptor hog(Size(100, 100), Size(16, 16), Size(4, 4), Size(8, 8), 9, -1,
 			0.2, true, 64);
 
 	vector<Mat> testImg;
 	int testPedNum, testVehNum;
-	loadImages(testImg, testPedNum, testVehNum, "test_pedestrians/*.jpg",
+	loadImages1(testImg, testPedNum, testVehNum, "test_pedestrians/*.jpg",
 			"test_vehicles/*.jpg");
 
 	vector<int> testLabels;
-	loadLabels(testLabels, testPedNum, testVehNum);
+	loadLabels1(testLabels, testPedNum, testVehNum);
 
 	vector<vector<float> > testHOG;
 	computeHOG(testHOG, testImg, hog);
@@ -118,12 +118,12 @@ int main(int argc, char** argv) {
 		svm.load("svm_classifier.xml");
 	} else {
 		vector<Mat> trainImg;
-		int trainPedNum, trainVehNum;
-		loadImages(trainImg, trainPedNum, trainVehNum,
+		int trainPedNum, trainVehSize;
+		loadImages1(trainImg, trainPedNum, trainVehSize,
 				"train_pedestrians/*.jpg", "train_vehicles/*.jpg");
 
 		vector<int> trainLabels;
-		loadLabels(trainLabels, trainPedNum, trainVehNum);
+		loadLabels1(trainLabels, trainPedNum, trainVehSize);
 
 		vector<vector<float> > trainHOG;
 		computeHOG(trainHOG, trainImg, hog);

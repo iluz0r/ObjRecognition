@@ -13,7 +13,7 @@
 using namespace cv;
 using namespace std;
 
-void OLBP2(const Mat &src, Mat &dst) {
+void OLBP(const Mat &src, Mat &dst) {
 	dst = Mat::zeros(src.rows - 2, src.cols - 2, CV_8UC1);
 	for (int i = 1; i < src.rows - 1; i++) {
 		for (int j = 1; j < src.cols - 1; j++) {
@@ -32,7 +32,7 @@ void OLBP2(const Mat &src, Mat &dst) {
 	}
 }
 
-void ELBP2(const Mat &src, Mat &dst, int radius, int neighbors) {
+void ELBP(const Mat &src, Mat &dst, int radius, int neighbors) {
 	neighbors = max(min(neighbors, 31), 1); // set bounds...
 	// Note: alternatively you can switch to the new OpenCV Mat_
 	// type system to define an unsigned int matrix... I am probably
@@ -61,21 +61,21 @@ void ELBP2(const Mat &src, Mat &dst, int radius, int neighbors) {
 		// iterate through your data
 		for (int i = radius; i < src.rows - radius; i++) {
 			for (int j = radius; j < src.cols - radius; j++) {
-				float t = w1 * src.at<int>(i + fy, j + fx)
-						+ w2 * src.at<int>(i + fy, j + cx)
-						+ w3 * src.at<int>(i + cy, j + fx)
-						+ w4 * src.at<int>(i + cy, j + cx);
+				float t = w1 * src.at<unsigned char>(i + fy, j + fx)
+						+ w2 * src.at<unsigned char>(i + fy, j + cx)
+						+ w3 * src.at<unsigned char>(i + cy, j + fx)
+						+ w4 * src.at<unsigned char>(i + cy, j + cx);
 				// we are dealing with floating point precision, so add some little tolerance
 				dst.at<unsigned int>(i - radius, j - radius) += ((t
 						> src.at<float>(i, j))
-						&& (abs(t - src.at<int>(i, j))
+						&& (abs(t - src.at<unsigned char>(i, j))
 								> std::numeric_limits<float>::epsilon())) << n;
 			}
 		}
 	}
 }
 
-void loadImages2(vector<Mat> &images, int &pedSize, int &vehiclesSize,
+void loadImages(vector<Mat> &images, int &pedNum, int &vehiclesNum,
 		String pedPath, String vehPath) {
 	vector<String> pedFilesNames;
 	glob(pedPath, pedFilesNames, true);
@@ -85,7 +85,7 @@ void loadImages2(vector<Mat> &images, int &pedSize, int &vehiclesSize,
 		resize(img, resizedImg, Size(100, 100));
 		images.push_back(resizedImg);
 	}
-	pedSize = pedFilesNames.size();
+	pedNum = pedFilesNames.size();
 
 	vector<String> vehFilesNames;
 	glob(vehPath, vehFilesNames, true);
@@ -95,22 +95,21 @@ void loadImages2(vector<Mat> &images, int &pedSize, int &vehiclesSize,
 		resize(img, resizedImg, Size(100, 100));
 		images.push_back(resizedImg);
 	}
-	vehiclesSize = vehFilesNames.size();
+	vehiclesNum = vehFilesNames.size();
 }
 
-int main2(int argc, char** argv) {
+int main(int argc, char** argv) {
 	vector<Mat> trainImg;
-	int trainPedSize, trainVehSize;
-	loadImages2(trainImg, trainPedSize, trainVehSize, "train_pedestrians/*.jpg",
+	int trainPedNum, trainVehNum;
+	loadImages(trainImg, trainPedNum, trainVehNum, "train_pedestrians/*.jpg",
 			"train_vehicles/*.jpg");
 
 	for(unsigned int i = 0; i < trainImg.size(); i++) {
-		Mat trainImgInt, resultLbp;
+		Mat resultLbp;
 		//resize(trainImg[i], trainImg[i], Size(), 0.5, 0.5);
-		trainImg[i].convertTo(trainImgInt, CV_32SC1);
 
 		Mat lbp;
-		ELBP2(trainImgInt, lbp, 1, 16);
+		OLBP(trainImg[i], lbp);
 		normalize(lbp, lbp, 0, 255, NORM_MINMAX, CV_8UC1);
 
 		stringstream ss;
