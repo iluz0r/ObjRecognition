@@ -13,6 +13,16 @@
 using namespace cv;
 using namespace std;
 
+void histogram(const Mat &src, Mat &hist, int numPatterns) {
+	hist = Mat::zeros(1, numPatterns, CV_32SC1);
+	for (int i = 0; i < src.rows; i++) {
+		for (int j = 0; j < src.cols; j++) {
+			int bin = src.at<unsigned char>(i, j);
+			hist.at<int>(0, bin) += 1;
+		}
+	}
+}
+
 void OLBP(const Mat &src, Mat &dst) {
 	dst = Mat::zeros(src.rows - 2, src.cols - 2, CV_8UC1);
 	for (int i = 1; i < src.rows - 1; i++) {
@@ -100,23 +110,29 @@ int main(int argc, char** argv) {
 	loadImages(trainImg, trainPedNum, trainVehNum, "train_pedestrians/*.jpg",
 			"train_vehicles/*.jpg");
 
-	for(unsigned int i = 0; i < trainImg.size(); i++) {
-		//resize(trainImg[i], trainImg[i], Size(), 0.5, 0.5);
-
+	vector<Mat> trainLBP;
+	for (unsigned int i = 0; i < trainImg.size(); i++) {
 		Mat lbp;
 		OLBP(trainImg[i], lbp);
 		normalize(lbp, lbp, 0, 255, NORM_MINMAX, CV_8UC1);
 
-		stringstream ss;
-		ss << "LBP " << i;
-		namedWindow(ss.str(),CV_WINDOW_AUTOSIZE);
-		imshow(ss.str(), lbp);
+		/*
+		 stringstream ss;
+		 ss << "LBP " << i;
+		 namedWindow(ss.str(), CV_WINDOW_AUTOSIZE);
+		 imshow(ss.str(), lbp);
 
-		stringstream ss2;
-		ss2 << "Original " << i;
-		namedWindow(ss2.str(), CV_WINDOW_AUTOSIZE);
-		imshow(ss2.str(), trainImg[i]);
-		waitKey(0);
+		 stringstream ss2;
+		 ss2 << "Original " << i;
+		 namedWindow(ss2.str(), CV_WINDOW_AUTOSIZE);
+		 imshow(ss2.str(), trainImg[i]);
+		 waitKey(0);
+		 */
+
+		Mat hist;
+		histogram(lbp, hist, 256);
+		trainLBP.push_back(hist);
 	}
+	cout << trainLBP.size() << endl;
 	return (0);
 }
