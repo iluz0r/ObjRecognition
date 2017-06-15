@@ -13,12 +13,46 @@
 using namespace cv;
 using namespace std;
 
+void SVMevaluate(Mat &testResponse, float &count, float &accuracy,
+		vector<int> &testLabels) {
+
+	for (int i = 0; i < testResponse.rows; i++) {
+		if (testResponse.at<float>(i, 0) == testLabels[i]) {
+			count = count + 1;
+		}
+	}
+	accuracy = (count / testResponse.rows) * 100;
+}
+
+void SVMtrain(CvSVM &svm, Mat &trainMat, vector<int> &trainLabels) {
+	CvSVMParams params;
+	params.svm_type = CvSVM::C_SVC;
+	params.kernel_type = CvSVM::LINEAR;
+	CvMat trainingMat = trainMat;
+	Mat trainLabelsMat(trainLabels.size(), 1, CV_32FC1);
+
+	for (unsigned int i = 0; i < trainLabels.size(); i++) {
+		trainLabelsMat.at<float>(i, 0) = trainLabels[i];
+	}
+	CvMat trainingLabelsMat = trainLabelsMat;
+	svm.train(&trainingMat, &trainingLabelsMat, Mat(), Mat(), params);
+	svm.save("svm_classifier.xml");
+}
+
+void convertVectorToMatrix(const vector<Mat> &resultLBP, Mat &mat) {
+	for (unsigned int i = 0; i < resultLBP.size(); i++) {
+		for (int j = 0; j < resultLBP[i].cols; j++) {
+			mat.at<float>(i, j) = resultLBP[i].at<float>(0, j);
+		}
+	}
+}
+
 void histogram(const Mat &src, Mat &hist, int numPatterns) {
-	hist = Mat::zeros(1, numPatterns, CV_32SC1);
+	hist = Mat::zeros(1, numPatterns, CV_32FC1);
 	for (int i = 0; i < src.rows; i++) {
 		for (int j = 0; j < src.cols; j++) {
 			int bin = src.at<unsigned char>(i, j);
-			hist.at<int>(0, bin) += 1;
+			hist.at<float>(0, bin) += 1;
 		}
 	}
 }
@@ -81,6 +115,23 @@ void ELBP(const Mat &src, Mat &dst, int radius, int neighbors) {
 	}
 }
 
+void computeLBP(vector<Mat> &resultLBP, const vector<Mat> &img) {
+	for (unsigned int i = 0; i < img.size(); i++) {
+		Mat lbp;
+		OLBP(img[i], lbp);
+		normalize(lbp, lbp, 0, 255, NORM_MINMAX, CV_8UC1);
+		Mat hist;
+		histogram(lbp, hist, 256); // 256 is the number of bins of the histogram. It changes with the neighbors
+		resultLBP.push_back(hist);
+	}
+}
+
+void loadLabels(vector<int> &labels, int pedNum, int vehiclesNum) {
+	for (int i = 0; i < (pedNum + vehiclesNum); i++) {
+		labels.push_back(i < pedNum ? 5 : 6); // Atm 5 means Pedestrian label and 6 means Vehicles
+	}
+}
+
 void loadImages(vector<Mat> &images, int &pedNum, int &vehiclesNum,
 		String pedPath, String vehPath) {
 	vector<String> pedFilesNames;
@@ -109,30 +160,37 @@ int main(int argc, char** argv) {
 	int trainPedNum, trainVehNum;
 	loadImages(trainImg, trainPedNum, trainVehNum, "train_pedestrians/*.jpg",
 			"train_vehicles/*.jpg");
+	vector<int> trainLabels;
+	loadLabels(trainLabels, trainPedNum, trainVehNum);
 
 	vector<Mat> trainLBP;
-	for (unsigned int i = 0; i < trainImg.size(); i++) {
-		Mat lbp;
-		OLBP(trainImg[i], lbp);
-		normalize(lbp, lbp, 0, 255, NORM_MINMAX, CV_8UC1);
+	computeLBP(trainLBP, trainImg);
 
-		/*
-		 stringstream ss;
-		 ss << "LBP " << i;
-		 namedWindow(ss.str(), CV_WINDOW_AUTOSIZE);
-		 imshow(ss.str(), lbp);
+	Mat trainMat(trainLBP.size(), trainLBP[0].cols, CV_32FC1);
+	convertVectorToMatrix(trainLBP, trainMat);
+	CvSVM svm;
+	SVMtrain(svm, trainMat, trainLabels);
 
-		 stringstream ss2;
-		 ss2 << "Original " << i;
-		 namedWindow(ss2.str(), CV_WINDOW_AUTOSIZE);
-		 imshow(ss2.str(), trainImg[i]);
-		 waitKey(0);
-		 */
+	vector<Mat> testImg;
+	int testPedNum, testVehNum;
+	loadImages(testImg, testPedNum, testVehNum, "test_pedestrians/*.jpg",
+			"test_vehicles/*.jpg");
+	vector<int> testLabels;
+	loadLabels(testLabels, testPedNum, testVehNum);
 
-		Mat hist;
-		histogram(lbp, hist, 256);
-		trainLBP.push_back(hist);
-	}
-	cout << trainLBP.size() << endl;
+	vector<Mat> testLBP;
+	computeLBP(testLBP, testImg);
+
+	Mat testMat(testLBP.size(), testLBP[0].cols, CV_32FC1);
+	convertVectorToMatrix(testLBP, testMat);
+	Mat testResponse;
+	svm.predict(testMat, testResponse);
+
+	float count = 0;
+	float accuracy = 0;
+	SVMevaluate(testResponse, count, accuracy, testLabels);
+
+	cout << "The accuracy is " << accuracy << "%" << endl;
+
 	return (0);
 }

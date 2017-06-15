@@ -17,7 +17,7 @@ using namespace std;
 
 #define LOAD_SVM 1
 
-void SVMevaluate(Mat &testResponse, float &count, float &accuracy,
+void SVMevaluate1(Mat &testResponse, float &count, float &accuracy,
 		vector<int> &testLabels) {
 
 	for (int i = 0; i < testResponse.rows; i++) {
@@ -28,7 +28,7 @@ void SVMevaluate(Mat &testResponse, float &count, float &accuracy,
 	accuracy = (count / testResponse.rows) * 100;
 }
 
-void SVMtrain(CvSVM &svm, Mat &trainMat, vector<int> &trainLabels) {
+void SVMtrain1(CvSVM &svm, Mat &trainMat, vector<int> &trainLabels) {
 	CvSVMParams params;
 	params.svm_type = CvSVM::C_SVC;
 	params.kernel_type = CvSVM::LINEAR;
@@ -43,7 +43,7 @@ void SVMtrain(CvSVM &svm, Mat &trainMat, vector<int> &trainLabels) {
 	svm.save("svm_classifier.xml");
 }
 
-void convertVectorToMatrix(vector<vector<float> > &hogResult, Mat &mat) {
+void convertVectorToMatrix1(vector<vector<float> > &hogResult, Mat &mat) {
 	int descriptor_size = hogResult[0].size();
 
 	for (unsigned int i = 0; i < hogResult.size(); i++) {
@@ -53,7 +53,7 @@ void convertVectorToMatrix(vector<vector<float> > &hogResult, Mat &mat) {
 	}
 }
 
-void computeHOG(vector<vector<float> > &hogResult, vector<Mat> &img,
+void computeHOG(vector<vector<float> > &hogResult, const vector<Mat> &img,
 		HOGDescriptor &hog) {
 	for (unsigned int i = 0; i < img.size(); i++) {
 		vector<float> descriptors;
@@ -93,14 +93,34 @@ void loadImages1(vector<Mat> &images, int &pedNum, int &vehiclesNum,
 
 int main1(int argc, char** argv) {
 	// The 2nd and 4th params are fixed. Choose 1st and 3th such that (1st-2nd)/3th = 0
-	HOGDescriptor hog(Size(100, 100), Size(16, 16), Size(4, 4), Size(8, 8), 9, -1,
-			0.2, true, 64);
+	HOGDescriptor hog(Size(100, 100), Size(16, 16), Size(4, 4), Size(8, 8), 9,
+			-1, 0.2, true, 64);
+	CvSVM svm;
+
+	// If xml classifier exists it will be loaded, otherwise a new classifier will be trained
+	if (LOAD_SVM) {
+		svm.load("svm_classifier.xml");
+	} else {
+		vector<Mat> trainImg;
+		int trainPedNum, trainVehSize;
+		loadImages1(trainImg, trainPedNum, trainVehSize,
+				"train_pedestrians/*.jpg", "train_vehicles/*.jpg");
+		vector<int> trainLabels;
+		loadLabels1(trainLabels, trainPedNum, trainVehSize);
+
+		vector<vector<float> > trainHOG;
+		computeHOG(trainHOG, trainImg, hog);
+
+		int descriptorSize = trainHOG[0].size();
+		Mat trainMat(trainHOG.size(), descriptorSize, CV_32FC1);
+		convertVectorToMatrix1(trainHOG, trainMat);
+		SVMtrain1(svm, trainMat, trainLabels);
+	}
 
 	vector<Mat> testImg;
 	int testPedNum, testVehNum;
 	loadImages1(testImg, testPedNum, testVehNum, "test_pedestrians/*.jpg",
 			"test_vehicles/*.jpg");
-
 	vector<int> testLabels;
 	loadLabels1(testLabels, testPedNum, testVehNum);
 
@@ -109,36 +129,13 @@ int main1(int argc, char** argv) {
 
 	int descriptorSize = testHOG[0].size();
 	Mat testMat(testHOG.size(), descriptorSize, CV_32FC1);
-	convertVectorToMatrix(testHOG, testMat);
-
+	convertVectorToMatrix1(testHOG, testMat);
 	Mat testResponse;
-	CvSVM svm;
-
-	if (LOAD_SVM) {
-		svm.load("svm_classifier.xml");
-	} else {
-		vector<Mat> trainImg;
-		int trainPedNum, trainVehSize;
-		loadImages1(trainImg, trainPedNum, trainVehSize,
-				"train_pedestrians/*.jpg", "train_vehicles/*.jpg");
-
-		vector<int> trainLabels;
-		loadLabels1(trainLabels, trainPedNum, trainVehSize);
-
-		vector<vector<float> > trainHOG;
-		computeHOG(trainHOG, trainImg, hog);
-
-		descriptorSize = trainHOG[0].size();
-		Mat trainMat(trainHOG.size(), descriptorSize, CV_32FC1);
-		convertVectorToMatrix(trainHOG, trainMat);
-		SVMtrain(svm, trainMat, trainLabels);
-	}
-
 	svm.predict(testMat, testResponse);
 
 	float count = 0;
 	float accuracy = 0;
-	SVMevaluate(testResponse, count, accuracy, testLabels);
+	SVMevaluate1(testResponse, count, accuracy, testLabels);
 
 	cout << "The accuracy is " << accuracy << "%" << endl;
 
