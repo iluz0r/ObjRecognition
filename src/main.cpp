@@ -10,41 +10,33 @@
 #include <opencv2/objdetect/objdetect.hpp>
 #include <opencv2/ml/ml.hpp>
 
+#include <iostream>
+
 using namespace cv;
 using namespace std;
 
+#define LOAD_SVM 0
+#define DESCRIPTOR_TYPE 1 // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
+
 void SVMevaluate(Mat &testResponse, float &count, float &accuracy,
-		vector<int> &testLabels) {
+		Mat &testLabelsMat) {
 
 	for (int i = 0; i < testResponse.rows; i++) {
-		if (testResponse.at<float>(i, 0) == testLabels[i]) {
+		if (testResponse.at<float>(i, 0) == testLabelsMat.at<float>(i, 0)) {
 			count = count + 1;
 		}
 	}
 	accuracy = (count / testResponse.rows) * 100;
 }
 
-void SVMtrain(CvSVM &svm, Mat &trainMat, vector<int> &trainLabels) {
+void SVMtrain(CvSVM &svm, Mat &descriptorsMat, Mat &labelsMat) {
 	CvSVMParams params;
 	params.svm_type = CvSVM::C_SVC;
 	params.kernel_type = CvSVM::LINEAR;
-	CvMat trainingMat = trainMat;
-	Mat trainLabelsMat(trainLabels.size(), 1, CV_32FC1);
-
-	for (unsigned int i = 0; i < trainLabels.size(); i++) {
-		trainLabelsMat.at<float>(i, 0) = trainLabels[i];
-	}
-	CvMat trainingLabelsMat = trainLabelsMat;
-	svm.train(&trainingMat, &trainingLabelsMat, Mat(), Mat(), params);
+	CvMat trainingDesc = descriptorsMat;
+	CvMat trainingLabels = labelsMat;
+	svm.train(&trainingDesc, &trainingLabels, Mat(), Mat(), params);
 	svm.save("svm_classifier.xml");
-}
-
-void convertVectorToMatrix(const vector<Mat> &resultLBP, Mat &mat) {
-	for (unsigned int i = 0; i < resultLBP.size(); i++) {
-		for (int j = 0; j < resultLBP[i].cols; j++) {
-			mat.at<float>(i, j) = resultLBP[i].at<float>(0, j);
-		}
-	}
 }
 
 void histogram(const Mat &src, Mat &hist, int numPatterns) {
@@ -115,14 +107,49 @@ void ELBP(const Mat &src, Mat &dst, int radius, int neighbors) {
 	}
 }
 
-void computeLBP(vector<Mat> &resultLBP, const vector<Mat> &img) {
+void computeLBP(vector<Mat> &lbpResult, const vector<Mat> &img) {
 	for (unsigned int i = 0; i < img.size(); i++) {
 		Mat lbp;
 		OLBP(img[i], lbp);
 		normalize(lbp, lbp, 0, 255, NORM_MINMAX, CV_8UC1);
 		Mat hist;
 		histogram(lbp, hist, 256); // 256 is the number of bins of the histogram. It changes with the neighbors
-		resultLBP.push_back(hist);
+		lbpResult.push_back(hist);
+	}
+}
+
+void computeHOG(vector<vector<float> > &hogResult, const vector<Mat> &img) {
+	// The 2nd and 4th params are fixed. Choose 1st and 3th such that (1st-2nd)/3th = 0
+	HOGDescriptor hog(Size(100, 100), Size(16, 16), Size(4, 4), Size(8, 8), 9,
+			-1, 0.2, true, 64);
+	for (unsigned int i = 0; i < img.size(); i++) {
+		vector<float> descriptors;
+		hog.compute(img[i], descriptors);
+		hogResult.push_back(descriptors);
+	}
+}
+
+void convertVectorToMatrix(vector<vector<float> > &hogResult, Mat &mat) {
+	int descriptor_size = hogResult[0].size();
+
+	for (unsigned int i = 0; i < hogResult.size(); i++) {
+		for (int j = 0; j < descriptor_size; j++) {
+			mat.at<float>(i, j) = hogResult[i][j];
+		}
+	}
+}
+
+void convertVectorToMatrix(const vector<Mat> &lbpResult, Mat &mat) {
+	for (unsigned int i = 0; i < lbpResult.size(); i++) {
+		for (int j = 0; j < lbpResult[i].cols; j++) {
+			mat.at<float>(i, j) = lbpResult[i].at<float>(0, j);
+		}
+	}
+}
+
+void convertVectorToMatrix(const vector<int> &labels, Mat &labelsMat) {
+	for (unsigned int i = 0; i < labels.size(); i++) {
+		labelsMat.at<float>(i, 0) = labels[i];
 	}
 }
 
@@ -155,40 +182,65 @@ void loadImages(vector<Mat> &images, int &pedNum, int &vehiclesNum,
 	vehiclesNum = vehFilesNames.size();
 }
 
+void createClassifierMatrices(Mat &descriptorsMat, Mat &labelsMat, String pedPath,
+		String vehPath) {
+	// Loads samples and corresponding labels
+	vector<Mat> images;
+	int pedNum, vehNum;
+	loadImages(images, pedNum, vehNum, pedPath, vehPath);
+	vector<int> labels;
+	loadLabels(labels, pedNum, vehNum);
+	// Converts the vector<int> of labels into a Mat (a column vector) of float
+	labelsMat = Mat(labels.size(), 1, CV_32FC1);
+	convertVectorToMatrix(labels, labelsMat);
+
+	switch (DESCRIPTOR_TYPE) {
+	case 0: {
+		// Computes hog, calculating a matrix (vector<vector<float>>) in which each row is a feature vector.
+		vector<vector<float> > hogResult;
+		computeHOG(hogResult, images);
+
+		// Converts the vector<vector<float>> into a Mat of float
+		descriptorsMat = Mat(hogResult.size(), hogResult[0].size(), CV_32FC1);
+		convertVectorToMatrix(hogResult, descriptorsMat);
+	}
+		break;
+	case 1: {
+		// Computes LBP, calculating a matrix (vector<Mat>, in which Mat is a row vector) in witch each row is a feature vector
+		vector<Mat> lbpResult;
+		computeLBP(lbpResult, images);
+
+		// Converts the vector<Mat> into a Mat of float
+		descriptorsMat = Mat(lbpResult.size(), lbpResult[0].cols, CV_32FC1);
+		convertVectorToMatrix(lbpResult, descriptorsMat);
+	}
+		break;
+	default:
+		break;
+	}
+}
+
 int main(int argc, char** argv) {
-	vector<Mat> trainImg;
-	int trainPedNum, trainVehNum;
-	loadImages(trainImg, trainPedNum, trainVehNum, "train_pedestrians/*.jpg",
-			"train_vehicles/*.jpg");
-	vector<int> trainLabels;
-	loadLabels(trainLabels, trainPedNum, trainVehNum);
-
-	vector<Mat> trainLBP;
-	computeLBP(trainLBP, trainImg);
-
-	Mat trainMat(trainLBP.size(), trainLBP[0].cols, CV_32FC1);
-	convertVectorToMatrix(trainLBP, trainMat);
 	CvSVM svm;
-	SVMtrain(svm, trainMat, trainLabels);
 
-	vector<Mat> testImg;
-	int testPedNum, testVehNum;
-	loadImages(testImg, testPedNum, testVehNum, "test_pedestrians/*.jpg",
-			"test_vehicles/*.jpg");
-	vector<int> testLabels;
-	loadLabels(testLabels, testPedNum, testVehNum);
+	if (LOAD_SVM) {
+		svm.load("svm_classifier.xml");
+	} else {
+		Mat descriptorsMat, labelsMat;
+		createClassifierMatrices(descriptorsMat, labelsMat,
+				"train_pedestrians/*.jpg", "train_vehicles/*.jpg");
+		SVMtrain(svm, descriptorsMat, labelsMat);
+	}
 
-	vector<Mat> testLBP;
-	computeLBP(testLBP, testImg);
-
-	Mat testMat(testLBP.size(), testLBP[0].cols, CV_32FC1);
-	convertVectorToMatrix(testLBP, testMat);
+	Mat testDescriptorsMat, testLabelsMat;
+	createClassifierMatrices(testDescriptorsMat, testLabelsMat,
+			"test_pedestrians/*.jpg", "test_vehicles/*.jpg");
 	Mat testResponse;
-	svm.predict(testMat, testResponse);
+	svm.predict(testDescriptorsMat, testResponse);
 
 	float count = 0;
 	float accuracy = 0;
-	SVMevaluate(testResponse, count, accuracy, testLabels);
+	SVMevaluate(testResponse, count, accuracy, testLabelsMat);
 
 	cout << "The accuracy is " << accuracy << "%" << endl;
 
