@@ -16,7 +16,7 @@ using namespace cv;
 using namespace std;
 
 #define LOAD_SVM 0
-#define DESCRIPTOR_TYPE 1 // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
+#define DESCRIPTOR_TYPE 2 // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
 
 void SVMevaluate(Mat &testResponse, float &count, float &accuracy,
 		Mat &testLabelsMat) {
@@ -129,6 +129,47 @@ void computeHOG(vector<vector<float> > &hogResult, const vector<Mat> &img) {
 	}
 }
 
+void computeBB(vector<vector<float> > dimensions, const vector<Mat> &img) {
+	for (unsigned int i = 0; i < img.size(); i++) {
+		// Detect edges using Canny
+		Mat canny_mat;
+		Canny(img[i], canny_mat, 20, 70, 3, false);
+
+		imshow("Canny output", canny_mat);
+		imshow("original", img[i]);
+
+		// Find contours
+		vector<vector<Point> > contours;
+		vector<Vec4i> hierarchy;
+		findContours(canny_mat, contours, hierarchy, CV_RETR_EXTERNAL,
+				CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
+
+		// Merge all contours into one vector
+		vector<Point> merged_contours_points;
+		for (unsigned int j = 0; j < contours.size(); j++) {
+			for (unsigned int k = 0; k < contours[j].size(); k++) {
+				merged_contours_points.push_back(contours[j][k]);
+			}
+		}
+
+		// Get the rotated bounding box
+		vector<Point> hull;
+		convexHull(merged_contours_points, hull);
+		RotatedRect rotated_bounding = minAreaRect(hull);
+
+		// Draw the rotated bouding box
+		Mat drawing = Mat::zeros(canny_mat.size(), CV_8UC3);
+		Point2f rect_vertices[4];
+		rotated_bounding.points(rect_vertices);
+		for (int j = 0; j < 4; j++)
+			line(drawing, rect_vertices[j], rect_vertices[(j + 1) % 4],
+					Scalar(120, 200, 200), 1, 8);
+
+		imshow("Rotated bounding box", drawing);
+		waitKey();
+	}
+}
+
 void convertVectorToMatrix(vector<vector<float> > &hogResult, Mat &mat) {
 	int descriptor_size = hogResult[0].size();
 
@@ -182,8 +223,8 @@ void loadImages(vector<Mat> &images, int &pedNum, int &vehiclesNum,
 	vehiclesNum = vehFilesNames.size();
 }
 
-void createClassifierMatrices(Mat &descriptorsMat, Mat &labelsMat, String pedPath,
-		String vehPath) {
+void createClassifierMatrices(Mat &descriptorsMat, Mat &labelsMat,
+		String pedPath, String vehPath) {
 	// Loads samples and corresponding labels
 	vector<Mat> images;
 	int pedNum, vehNum;
@@ -215,6 +256,11 @@ void createClassifierMatrices(Mat &descriptorsMat, Mat &labelsMat, String pedPat
 		convertVectorToMatrix(lbpResult, descriptorsMat);
 	}
 		break;
+	case 2: {
+		vector<vector<float> > dimensions;
+		computeBB(dimensions, images);
+	}
+		break;
 	default:
 		break;
 	}
@@ -229,20 +275,21 @@ int main(int argc, char** argv) {
 		Mat descriptorsMat, labelsMat;
 		createClassifierMatrices(descriptorsMat, labelsMat,
 				"train_pedestrians/*.jpg", "train_vehicles/*.jpg");
-		SVMtrain(svm, descriptorsMat, labelsMat);
+		//SVMtrain(svm, descriptorsMat, labelsMat);
 	}
+	/*
+	 Mat testDescriptorsMat, testLabelsMat;
+	 createClassifierMatrices(testDescriptorsMat, testLabelsMat,
+	 "test_pedestrians/*.jpg", "test_vehicles/*.jpg");
+	 Mat testResponse;
+	 svm.predict(testDescriptorsMat, testResponse);
 
-	Mat testDescriptorsMat, testLabelsMat;
-	createClassifierMatrices(testDescriptorsMat, testLabelsMat,
-			"test_pedestrians/*.jpg", "test_vehicles/*.jpg");
-	Mat testResponse;
-	svm.predict(testDescriptorsMat, testResponse);
+	 float count = 0;
+	 float accuracy = 0;
+	 SVMevaluate(testResponse, count, accuracy, testLabelsMat);
 
-	float count = 0;
-	float accuracy = 0;
-	SVMevaluate(testResponse, count, accuracy, testLabelsMat);
-
-	cout << "The accuracy is " << accuracy << "%" << endl;
+	 cout << "The accuracy is " << accuracy << "%" << endl;
+	 */
 
 	return (0);
 }
