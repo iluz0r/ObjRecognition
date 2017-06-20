@@ -16,7 +16,7 @@ using namespace cv;
 using namespace std;
 
 #define LOAD_SVM 0
-#define DESCRIPTOR_TYPE 2 // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
+#define DESCRIPTOR_TYPE 1 // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
 
 void SVMevaluate(Mat &testResponse, float &count, float &accuracy,
 		Mat &testLabelsMat) {
@@ -154,9 +154,11 @@ void computeBB(vector<vector<float> > &dimensions, const vector<Mat> &img) {
 			}
 		}
 
-		// Get the rotated bounding box
+		// Merge all lines (contours) in one line through convex hull
 		vector<Point> hull;
 		convexHull(merged_contours_points, hull);
+
+		// Get the rotated bounding box
 		RotatedRect rotated_bounding = minAreaRect(hull);
 
 		vector<float> dim;
@@ -216,7 +218,7 @@ void loadImages(vector<Mat> &images, int &pedNum, int &vehiclesNum,
 	for (unsigned int i = 0; i < pedFilesNames.size(); i++) {
 		Mat img = imread(pedFilesNames[i], CV_LOAD_IMAGE_GRAYSCALE);
 		// Don't resize in the bounding box case
-		if(DESCRIPTOR_TYPE != 2)
+		if (DESCRIPTOR_TYPE != 2)
 			resize(img, img, Size(100, 100));
 		images.push_back(img);
 	}
@@ -227,7 +229,7 @@ void loadImages(vector<Mat> &images, int &pedNum, int &vehiclesNum,
 	for (unsigned int i = 0; i < vehFilesNames.size(); i++) {
 		Mat img = imread(vehFilesNames[i], CV_LOAD_IMAGE_GRAYSCALE);
 		// Don't resize in the bounding box case
-		if(DESCRIPTOR_TYPE != 2)
+		if (DESCRIPTOR_TYPE != 2)
 			resize(img, img, Size(100, 100));
 		images.push_back(img);
 	}
@@ -282,28 +284,28 @@ void createClassifierMatrices(Mat &descriptorsMat, Mat &labelsMat,
 }
 
 int main(int argc, char** argv) {
-	CvSVM svm;
+	 CvSVM svm;
 
-	if (LOAD_SVM) {
-		svm.load("svm_classifier.xml");
-	} else {
-		Mat descriptorsMat, labelsMat;
-		createClassifierMatrices(descriptorsMat, labelsMat,
-				"train_pedestrians/*.jpg", "train_vehicles/*.jpg");
-		SVMtrain(svm, descriptorsMat, labelsMat);
-	}
+	 if (LOAD_SVM) {
+	 svm.load("svm_classifier.xml");
+	 } else {
+	 Mat descriptorsMat, labelsMat;
+	 createClassifierMatrices(descriptorsMat, labelsMat,
+	 "train_pedestrians/*.jpg", "train_vehicles/*.jpg");
+	 SVMtrain(svm, descriptorsMat, labelsMat);
+	 }
 
-	Mat testDescriptorsMat, testLabelsMat;
-	createClassifierMatrices(testDescriptorsMat, testLabelsMat,
-			"test_pedestrians/*.jpg", "test_vehicles/*.jpg");
-	Mat testResponse;
-	svm.predict(testDescriptorsMat, testResponse);
+	 Mat testDescriptorsMat, testLabelsMat;
+	 createClassifierMatrices(testDescriptorsMat, testLabelsMat,
+	 "test_pedestrians/*.jpg", "test_vehicles/*.jpg");
+	 Mat testResponse;
+	 svm.predict(testDescriptorsMat, testResponse);
 
-	float count = 0;
-	float accuracy = 0;
-	SVMevaluate(testResponse, count, accuracy, testLabelsMat);
+	 float count = 0;
+	 float accuracy = 0;
+	 SVMevaluate(testResponse, count, accuracy, testLabelsMat);
 
-	cout << "The accuracy is " << accuracy << "%" << endl;
+	 cout << "The accuracy is " << accuracy << "%" << endl;
 
 	return (0);
 }
