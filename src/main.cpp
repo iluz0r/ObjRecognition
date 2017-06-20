@@ -16,7 +16,7 @@ using namespace cv;
 using namespace std;
 
 #define LOAD_SVM 0
-#define DESCRIPTOR_TYPE 1 // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
+#define DESCRIPTOR_TYPE 2 // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
 
 void SVMevaluate(Mat &testResponse, float &count, float &accuracy,
 		Mat &testLabelsMat) {
@@ -284,28 +284,28 @@ void createClassifierMatrices(Mat &descriptorsMat, Mat &labelsMat,
 }
 
 int main(int argc, char** argv) {
-	 CvSVM svm;
+	CvSVM svm;
 
-	 if (LOAD_SVM) {
-	 svm.load("svm_classifier.xml");
-	 } else {
-	 Mat descriptorsMat, labelsMat;
-	 createClassifierMatrices(descriptorsMat, labelsMat,
-	 "train_pedestrians/*.jpg", "train_vehicles/*.jpg");
-	 SVMtrain(svm, descriptorsMat, labelsMat);
-	 }
+	if (LOAD_SVM) {
+		svm.load("svm_classifier.xml");
+	} else {
+		Mat descriptorsMat, labelsMat;
+		createClassifierMatrices(descriptorsMat, labelsMat,
+				"train_pedestrians/*.jpg", "train_vehicles/*.jpg");
+		SVMtrain(svm, descriptorsMat, labelsMat);
+	}
 
-	 Mat testDescriptorsMat, testLabelsMat;
-	 createClassifierMatrices(testDescriptorsMat, testLabelsMat,
-	 "test_pedestrians/*.jpg", "test_vehicles/*.jpg");
-	 Mat testResponse;
-	 svm.predict(testDescriptorsMat, testResponse);
+	Mat testDescriptorsMat, testLabelsMat;
+	createClassifierMatrices(testDescriptorsMat, testLabelsMat,
+			"test_pedestrians/*.jpg", "test_vehicles/*.jpg");
+	Mat testResponse;
+	svm.predict(testDescriptorsMat, testResponse);
 
-	 float count = 0;
-	 float accuracy = 0;
-	 SVMevaluate(testResponse, count, accuracy, testLabelsMat);
+	float count = 0;
+	float accuracy = 0;
+	SVMevaluate(testResponse, count, accuracy, testLabelsMat);
 
-	 cout << "The accuracy is " << accuracy << "%" << endl;
+	cout << "The accuracy is " << accuracy << "%" << endl;
 
 	return (0);
 }
