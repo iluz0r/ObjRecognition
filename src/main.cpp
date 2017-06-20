@@ -129,14 +129,16 @@ void computeHOG(vector<vector<float> > &hogResult, const vector<Mat> &img) {
 	}
 }
 
-void computeBB(vector<vector<float> > dimensions, const vector<Mat> &img) {
+void computeBB(vector<vector<float> > &dimensions, const vector<Mat> &img) {
 	for (unsigned int i = 0; i < img.size(); i++) {
 		// Detect edges using Canny
 		Mat canny_mat;
 		Canny(img[i], canny_mat, 20, 70, 3, false);
 
-		imshow("Canny output", canny_mat);
-		imshow("original", img[i]);
+		/*
+		 imshow("Canny output", canny_mat);
+		 imshow("original", img[i]);
+		 */
 
 		// Find contours
 		vector<vector<Point> > contours;
@@ -157,16 +159,23 @@ void computeBB(vector<vector<float> > dimensions, const vector<Mat> &img) {
 		convexHull(merged_contours_points, hull);
 		RotatedRect rotated_bounding = minAreaRect(hull);
 
-		// Draw the rotated bouding box
-		Mat drawing = Mat::zeros(canny_mat.size(), CV_8UC3);
-		Point2f rect_vertices[4];
-		rotated_bounding.points(rect_vertices);
-		for (int j = 0; j < 4; j++)
-			line(drawing, rect_vertices[j], rect_vertices[(j + 1) % 4],
-					Scalar(120, 200, 200), 1, 8);
+		vector<float> dim;
+		dim.push_back(rotated_bounding.size.width);
+		dim.push_back(rotated_bounding.size.height);
+		dimensions.push_back(dim);
 
-		imshow("Rotated bounding box", drawing);
-		waitKey();
+		/*
+		 // Draw the rotated bouding box
+		 Mat drawing = Mat::zeros(canny_mat.size(), CV_8UC3);
+		 Point2f rect_vertices[4];
+		 rotated_bounding.points(rect_vertices);
+		 for (int j = 0; j < 4; j++)
+		 line(drawing, rect_vertices[j], rect_vertices[(j + 1) % 4],
+		 Scalar(120, 200, 200), 1, 8);
+
+		 imshow("Rotated bounding box", drawing);
+		 waitKey();
+		 */
 	}
 }
 
@@ -206,9 +215,10 @@ void loadImages(vector<Mat> &images, int &pedNum, int &vehiclesNum,
 	glob(pedPath, pedFilesNames, true);
 	for (unsigned int i = 0; i < pedFilesNames.size(); i++) {
 		Mat img = imread(pedFilesNames[i], CV_LOAD_IMAGE_GRAYSCALE);
-		Mat resizedImg;
-		resize(img, resizedImg, Size(100, 100));
-		images.push_back(resizedImg);
+		// Don't resize in the bounding box case
+		if(DESCRIPTOR_TYPE != 2)
+			resize(img, img, Size(100, 100));
+		images.push_back(img);
 	}
 	pedNum = pedFilesNames.size();
 
@@ -216,9 +226,10 @@ void loadImages(vector<Mat> &images, int &pedNum, int &vehiclesNum,
 	glob(vehPath, vehFilesNames, true);
 	for (unsigned int i = 0; i < vehFilesNames.size(); i++) {
 		Mat img = imread(vehFilesNames[i], CV_LOAD_IMAGE_GRAYSCALE);
-		Mat resizedImg;
-		resize(img, resizedImg, Size(100, 100));
-		images.push_back(resizedImg);
+		// Don't resize in the bounding box case
+		if(DESCRIPTOR_TYPE != 2)
+			resize(img, img, Size(100, 100));
+		images.push_back(img);
 	}
 	vehiclesNum = vehFilesNames.size();
 }
@@ -259,6 +270,10 @@ void createClassifierMatrices(Mat &descriptorsMat, Mat &labelsMat,
 	case 2: {
 		vector<vector<float> > dimensions;
 		computeBB(dimensions, images);
+
+		// Converts the vector<vector<float>> into a Mat of float
+		descriptorsMat = Mat(dimensions.size(), dimensions[0].size(), CV_32FC1);
+		convertVectorToMatrix(dimensions, descriptorsMat);
 	}
 		break;
 	default:
@@ -275,21 +290,20 @@ int main(int argc, char** argv) {
 		Mat descriptorsMat, labelsMat;
 		createClassifierMatrices(descriptorsMat, labelsMat,
 				"train_pedestrians/*.jpg", "train_vehicles/*.jpg");
-		//SVMtrain(svm, descriptorsMat, labelsMat);
+		SVMtrain(svm, descriptorsMat, labelsMat);
 	}
-	/*
-	 Mat testDescriptorsMat, testLabelsMat;
-	 createClassifierMatrices(testDescriptorsMat, testLabelsMat,
-	 "test_pedestrians/*.jpg", "test_vehicles/*.jpg");
-	 Mat testResponse;
-	 svm.predict(testDescriptorsMat, testResponse);
 
-	 float count = 0;
-	 float accuracy = 0;
-	 SVMevaluate(testResponse, count, accuracy, testLabelsMat);
+	Mat testDescriptorsMat, testLabelsMat;
+	createClassifierMatrices(testDescriptorsMat, testLabelsMat,
+			"test_pedestrians/*.jpg", "test_vehicles/*.jpg");
+	Mat testResponse;
+	svm.predict(testDescriptorsMat, testResponse);
 
-	 cout << "The accuracy is " << accuracy << "%" << endl;
-	 */
+	float count = 0;
+	float accuracy = 0;
+	SVMevaluate(testResponse, count, accuracy, testLabelsMat);
+
+	cout << "The accuracy is " << accuracy << "%" << endl;
 
 	return (0);
 }
