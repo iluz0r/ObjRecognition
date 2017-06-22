@@ -15,7 +15,8 @@
 using namespace cv;
 using namespace std;
 
-#define DESCRIPTOR_TYPE 2 // {0 = hog, 1 = lbp, 2 = bb, 3 = conc, 4 = mes}
+#define DESCRIPTOR_TYPE 2 // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
+#define USE_MES 1
 
 void convertVectorToMatrix(const vector<vector<float> > &hogResult, Mat &mat) {
 	int featureVecSize = hogResult[0].size();
@@ -305,7 +306,7 @@ void createClassifierMatrices(Mat &featureVecMat, Mat &labelsMat,
 
 int main(int argc, char** argv) {
 	// If it's not MES
-	if (DESCRIPTOR_TYPE != 4) {
+	if (!USE_MES) {
 		CvSVM svm;
 		// Create the matrix of all training samples feature vectors and the matrix of all training samples labels
 		Mat featureVecMat, labelsMat;
@@ -331,12 +332,13 @@ int main(int argc, char** argv) {
 		// Print the result
 		cout << "The accuracy is " << accuracy << "%" << endl;
 	} else {
-		// Loop da 0 a 3 (hog, lbp, bb) {
+		// Loop da 0 a 3 su DESCRIPTOR_TYPE(hog, lbp, bb) {
 			// Addestrare il sistema con i training set
 			// Caricare i validation set
 			// Valutare l'accuracy del descrittore per i validation set e salvarla
 		// }
 		// Classificare i test set con hog, lbp e bb e pesare i risultati con l'accuracy
+		// Conviene utilizzare 3 variabili diverse per SVM hog, lbp e bb
 	}
 
 	return (0);
