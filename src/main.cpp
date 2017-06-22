@@ -15,8 +15,7 @@
 using namespace cv;
 using namespace std;
 
-#define LOAD_SVM 0
-#define DESCRIPTOR_TYPE 2 // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
+#define DESCRIPTOR_TYPE 2 // {0 = hog, 1 = lbp, 2 = bb, 3 = conc, 4 = mes}
 
 void convertVectorToMatrix(const vector<vector<float> > &hogResult, Mat &mat) {
 	int featureVecSize = hogResult[0].size();
@@ -231,8 +230,8 @@ void concatFeatureVectors(Mat &concatResult, const vector<Mat> &images) {
 	Mat bbResult;
 	computeBB(bbResult, images);
 
-	Mat matArray[] = {hogResult, lbpResult, bbResult};
-	hconcat(matArray, sizeof(matArray)/sizeof(*matArray), concatResult);
+	Mat matArray[] = { hogResult, lbpResult, bbResult };
+	hconcat(matArray, sizeof(matArray) / sizeof(*matArray), concatResult);
 }
 
 void loadLabels(vector<int> &labels, int pedNum, int vehiclesNum) {
@@ -305,34 +304,40 @@ void createClassifierMatrices(Mat &featureVecMat, Mat &labelsMat,
 }
 
 int main(int argc, char** argv) {
-	CvSVM svm;
-
-	// Load an already trained classifier or train a new classifier
-	if (LOAD_SVM) {
-		svm.load("svm_classifier.xml");
-	} else {
+	// If it's not MES
+	if (DESCRIPTOR_TYPE != 4) {
+		CvSVM svm;
+		// Create the matrix of all training samples feature vectors and the matrix of all training samples labels
 		Mat featureVecMat, labelsMat;
 		createClassifierMatrices(featureVecMat, labelsMat,
 				"train_pedestrians/*.jpg", "train_vehicles/*.jpg");
+		// Train the SVM classifier
 		SVMtrain(svm, featureVecMat, labelsMat);
+
+		// Create the matrix of all testing samples feature vectors and the matrix of all testing samples labels
+		Mat testFeatureVecMat, testLabelsMat;
+		createClassifierMatrices(testFeatureVecMat, testLabelsMat,
+				"test_pedestrians/*.jpg", "test_vehicles/*.jpg");
+
+		// Predict the testing samples class with the classifier
+		Mat testResponse;
+		svm.predict(testFeatureVecMat, testResponse);
+
+		// Evaluate the classifier accuracy
+		float count = 0;
+		float accuracy = 0;
+		SVMevaluate(testResponse, count, accuracy, testLabelsMat);
+
+		// Print the result
+		cout << "The accuracy is " << accuracy << "%" << endl;
+	} else {
+		// Loop da 0 a 3 (hog, lbp, bb) {
+			// Addestrare il sistema con i training set
+			// Caricare i validation set
+			// Valutare l'accuracy del descrittore per i validation set e salvarla
+		// }
+		// Classificare i test set con hog, lbp e bb e pesare i risultati con l'accuracy
 	}
-
-	// Create the matrix of all testing samples feature vectors and the matrix of all testing samples labels
-	Mat testFeatureVecMat, testLabelsMat;
-	createClassifierMatrices(testFeatureVecMat, testLabelsMat,
-			"test_pedestrians/*.jpg", "test_vehicles/*.jpg");
-
-	// Predict the testing samples class with the classifier
-	Mat testResponse;
-	svm.predict(testFeatureVecMat, testResponse);
-
-	// Evaluate the classifier accuracy
-	float count = 0;
-	float accuracy = 0;
-	SVMevaluate(testResponse, count, accuracy, testLabelsMat);
-
-	// Print the result
-	cout << "The accuracy is " << accuracy << "%" << endl;
 
 	return (0);
 }
