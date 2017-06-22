@@ -332,11 +332,9 @@ int main(int argc, char** argv) {
 		// Print the result
 		cout << "The accuracy is " << accuracy << "%" << endl;
 	} else {
-		// Loop da 0 a 3 su DESCRIPTOR_TYPE(hog, lbp, bb) {
-			// Addestrare il sistema con i training set
-			// Caricare i validation set
-			// Valutare l'accuracy del descrittore per i validation set e salvarla
-		// }
+		// Calcolare, offline, i tre classificatori (3 xml per hog,lbp,bb) con i set di training
+		// Caricare i validation set
+		// Valutare l'accuracy del descrittore per i validation set e salvarla (su file probabilmente)
 		// Classificare i test set con hog, lbp e bb e pesare i risultati con l'accuracy
 		// Conviene utilizzare 3 variabili diverse per SVM hog, lbp e bb.
 	}
