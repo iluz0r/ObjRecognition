@@ -338,7 +338,7 @@ int main(int argc, char** argv) {
 			// Valutare l'accuracy del descrittore per i validation set e salvarla
 		// }
 		// Classificare i test set con hog, lbp e bb e pesare i risultati con l'accuracy
-		// Conviene utilizzare 3 variabili diverse per SVM hog, lbp e bb
+		// Conviene utilizzare 3 variabili diverse per SVM hog, lbp e bb.
 	}
 
 	return (0);
