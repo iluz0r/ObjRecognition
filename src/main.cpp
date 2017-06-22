@@ -18,6 +18,30 @@ using namespace std;
 #define LOAD_SVM 0
 #define DESCRIPTOR_TYPE 2 // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
 
+void convertVectorToMatrix(const vector<vector<float> > &hogResult, Mat &mat) {
+	int featureVecSize = hogResult[0].size();
+
+	for (unsigned int i = 0; i < hogResult.size(); i++) {
+		for (int j = 0; j < featureVecSize; j++) {
+			mat.at<float>(i, j) = hogResult[i][j];
+		}
+	}
+}
+
+void convertVectorToMatrix(const vector<Mat> &lbpResult, Mat &mat) {
+	for (unsigned int i = 0; i < lbpResult.size(); i++) {
+		for (int j = 0; j < lbpResult[i].cols; j++) {
+			mat.at<float>(i, j) = lbpResult[i].at<float>(0, j);
+		}
+	}
+}
+
+void convertVectorToMatrix(const vector<int> &labels, Mat &labelsMat) {
+	for (unsigned int i = 0; i < labels.size(); i++) {
+		labelsMat.at<float>(i, 0) = labels[i];
+	}
+}
+
 void SVMevaluate(Mat &testResponse, float &count, float &accuracy,
 		Mat &testLabelsMat) {
 
@@ -29,11 +53,11 @@ void SVMevaluate(Mat &testResponse, float &count, float &accuracy,
 	accuracy = (count / testResponse.rows) * 100;
 }
 
-void SVMtrain(CvSVM &svm, Mat &descriptorsMat, Mat &labelsMat) {
+void SVMtrain(CvSVM &svm, Mat &featureVecMat, Mat &labelsMat) {
 	CvSVMParams params;
 	params.svm_type = CvSVM::C_SVC;
 	params.kernel_type = CvSVM::LINEAR;
-	CvMat trainingDesc = descriptorsMat;
+	CvMat trainingDesc = featureVecMat;
 	CvMat trainingLabels = labelsMat;
 	svm.train(&trainingDesc, &trainingLabels, Mat(), Mat(), params);
 	svm.save("svm_classifier.xml");
@@ -107,7 +131,26 @@ void ELBP(const Mat &src, Mat &dst, int radius, int neighbors) {
 	}
 }
 
-void computeLBP(vector<Mat> &lbpResult, const vector<Mat> &img) {
+void computeHOG(Mat &featureVecMat, const vector<Mat> &img) {
+	// The 2nd and 4th params are fixed. Choose 1st and 3th such that (1st-2nd)/3th = 0
+	HOGDescriptor hog(Size(100, 100), Size(16, 16), Size(4, 4), Size(8, 8), 9,
+			-1, 0.2, true, 64);
+	vector<vector<float> > hogResult;
+
+	for (unsigned int i = 0; i < img.size(); i++) {
+		vector<float> featureVector;
+		hog.compute(img[i], featureVector);
+		hogResult.push_back(featureVector);
+	}
+
+	// Converts the vector<vector<float>> into a Mat of float
+	featureVecMat = Mat(hogResult.size(), hogResult[0].size(), CV_32FC1);
+	convertVectorToMatrix(hogResult, featureVecMat);
+}
+
+void computeLBP(Mat &featureVecMat, const vector<Mat> &img) {
+	vector<Mat> lbpResult;
+
 	for (unsigned int i = 0; i < img.size(); i++) {
 		Mat lbp;
 		OLBP(img[i], lbp);
@@ -116,20 +159,15 @@ void computeLBP(vector<Mat> &lbpResult, const vector<Mat> &img) {
 		histogram(lbp, hist, 256); // 256 is the number of bins of the histogram. It changes with the neighbors
 		lbpResult.push_back(hist);
 	}
+
+	// Converts the vector<Mat> into a Mat of float
+	featureVecMat = Mat(lbpResult.size(), lbpResult[0].cols, CV_32FC1);
+	convertVectorToMatrix(lbpResult, featureVecMat);
 }
 
-void computeHOG(vector<vector<float> > &hogResult, const vector<Mat> &img) {
-	// The 2nd and 4th params are fixed. Choose 1st and 3th such that (1st-2nd)/3th = 0
-	HOGDescriptor hog(Size(100, 100), Size(16, 16), Size(4, 4), Size(8, 8), 9,
-			-1, 0.2, true, 64);
-	for (unsigned int i = 0; i < img.size(); i++) {
-		vector<float> descriptors;
-		hog.compute(img[i], descriptors);
-		hogResult.push_back(descriptors);
-	}
-}
+void computeBB(Mat &featureVecMat, const vector<Mat> &img) {
+	vector<vector<float> > dimensions;
 
-void computeBB(vector<vector<float> > &dimensions, const vector<Mat> &img) {
 	for (unsigned int i = 0; i < img.size(); i++) {
 		// Detect edges using Canny
 		Mat canny_mat;
@@ -179,30 +217,10 @@ void computeBB(vector<vector<float> > &dimensions, const vector<Mat> &img) {
 		 waitKey();
 		 */
 	}
-}
 
-void convertVectorToMatrix(vector<vector<float> > &hogResult, Mat &mat) {
-	int descriptor_size = hogResult[0].size();
-
-	for (unsigned int i = 0; i < hogResult.size(); i++) {
-		for (int j = 0; j < descriptor_size; j++) {
-			mat.at<float>(i, j) = hogResult[i][j];
-		}
-	}
-}
-
-void convertVectorToMatrix(const vector<Mat> &lbpResult, Mat &mat) {
-	for (unsigned int i = 0; i < lbpResult.size(); i++) {
-		for (int j = 0; j < lbpResult[i].cols; j++) {
-			mat.at<float>(i, j) = lbpResult[i].at<float>(0, j);
-		}
-	}
-}
-
-void convertVectorToMatrix(const vector<int> &labels, Mat &labelsMat) {
-	for (unsigned int i = 0; i < labels.size(); i++) {
-		labelsMat.at<float>(i, 0) = labels[i];
-	}
+	// Converts the vector<vector<float>> into a Mat of float
+	featureVecMat = Mat(dimensions.size(), dimensions[0].size(), CV_32FC1);
+	convertVectorToMatrix(dimensions, featureVecMat);
 }
 
 void loadLabels(vector<int> &labels, int pedNum, int vehiclesNum) {
@@ -236,7 +254,7 @@ void loadImages(vector<Mat> &images, int &pedNum, int &vehiclesNum,
 	vehiclesNum = vehFilesNames.size();
 }
 
-void createClassifierMatrices(Mat &descriptorsMat, Mat &labelsMat,
+void createClassifierMatrices(Mat &featureVecMat, Mat &labelsMat,
 		String pedPath, String vehPath) {
 	// Loads samples and corresponding labels
 	vector<Mat> images;
@@ -250,32 +268,23 @@ void createClassifierMatrices(Mat &descriptorsMat, Mat &labelsMat,
 
 	switch (DESCRIPTOR_TYPE) {
 	case 0: {
-		// Computes hog, calculating a matrix (vector<vector<float>>) in which each row is a feature vector.
-		vector<vector<float> > hogResult;
-		computeHOG(hogResult, images);
-
-		// Converts the vector<vector<float>> into a Mat of float
-		descriptorsMat = Mat(hogResult.size(), hogResult[0].size(), CV_32FC1);
-		convertVectorToMatrix(hogResult, descriptorsMat);
+		// Computes HOG, calculating a matrix in which each row is a feature vector.
+		computeHOG(featureVecMat, images);
 	}
 		break;
 	case 1: {
-		// Computes LBP, calculating a matrix (vector<Mat>, in which Mat is a row vector) in witch each row is a feature vector
-		vector<Mat> lbpResult;
-		computeLBP(lbpResult, images);
-
-		// Converts the vector<Mat> into a Mat of float
-		descriptorsMat = Mat(lbpResult.size(), lbpResult[0].cols, CV_32FC1);
-		convertVectorToMatrix(lbpResult, descriptorsMat);
+		// Computes LBP, calculating a matrix in which each row is a feature vector.
+		computeLBP(featureVecMat, images);
 	}
 		break;
 	case 2: {
-		vector<vector<float> > dimensions;
-		computeBB(dimensions, images);
-
-		// Converts the vector<vector<float>> into a Mat of float
-		descriptorsMat = Mat(dimensions.size(), dimensions[0].size(), CV_32FC1);
-		convertVectorToMatrix(dimensions, descriptorsMat);
+		// Computes the bounding boxes, calculating a matrix in which each row is a feature vector (width, height).
+		computeBB(featureVecMat, images);
+	}
+		break;
+	case 3: {
+		Mat concatResult;
+		//concatFeatureVectors();
 	}
 		break;
 	default:
@@ -289,17 +298,17 @@ int main(int argc, char** argv) {
 	if (LOAD_SVM) {
 		svm.load("svm_classifier.xml");
 	} else {
-		Mat descriptorsMat, labelsMat;
-		createClassifierMatrices(descriptorsMat, labelsMat,
+		Mat featureVecMat, labelsMat;
+		createClassifierMatrices(featureVecMat, labelsMat,
 				"train_pedestrians/*.jpg", "train_vehicles/*.jpg");
-		SVMtrain(svm, descriptorsMat, labelsMat);
+		SVMtrain(svm, featureVecMat, labelsMat);
 	}
 
-	Mat testDescriptorsMat, testLabelsMat;
-	createClassifierMatrices(testDescriptorsMat, testLabelsMat,
+	Mat testFeatureVecMat, testLabelsMat;
+	createClassifierMatrices(testFeatureVecMat, testLabelsMat,
 			"test_pedestrians/*.jpg", "test_vehicles/*.jpg");
 	Mat testResponse;
-	svm.predict(testDescriptorsMat, testResponse);
+	svm.predict(testFeatureVecMat, testResponse);
 
 	float count = 0;
 	float accuracy = 0;
