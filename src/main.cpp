@@ -223,6 +223,18 @@ void computeBB(Mat &featureVecMat, const vector<Mat> &img) {
 	convertVectorToMatrix(dimensions, featureVecMat);
 }
 
+void concatFeatureVectors(Mat &concatResult, const vector<Mat> &images) {
+	Mat hogResult;
+	computeHOG(hogResult, images);
+	Mat lbpResult;
+	computeLBP(lbpResult, images);
+	Mat bbResult;
+	computeBB(bbResult, images);
+
+	Mat matArray[] = {hogResult, lbpResult, bbResult};
+	hconcat(matArray, sizeof(matArray)/sizeof(*matArray), concatResult);
+}
+
 void loadLabels(vector<int> &labels, int pedNum, int vehiclesNum) {
 	for (int i = 0; i < (pedNum + vehiclesNum); i++) {
 		labels.push_back(i < pedNum ? 5 : 6); // Atm 5 means Pedestrian label and 6 means Vehicles
@@ -283,8 +295,8 @@ void createClassifierMatrices(Mat &featureVecMat, Mat &labelsMat,
 	}
 		break;
 	case 3: {
-		Mat concatResult;
-		//concatFeatureVectors();
+		// Computes the concatenation of different feature vectors (hog+lbp+bb).
+		concatFeatureVectors(featureVecMat, images);
 	}
 		break;
 	default:
@@ -295,6 +307,7 @@ void createClassifierMatrices(Mat &featureVecMat, Mat &labelsMat,
 int main(int argc, char** argv) {
 	CvSVM svm;
 
+	// Load an already trained classifier or train a new classifier
 	if (LOAD_SVM) {
 		svm.load("svm_classifier.xml");
 	} else {
@@ -304,16 +317,21 @@ int main(int argc, char** argv) {
 		SVMtrain(svm, featureVecMat, labelsMat);
 	}
 
+	// Create the matrix of all testing samples feature vectors and the matrix of all testing samples labels
 	Mat testFeatureVecMat, testLabelsMat;
 	createClassifierMatrices(testFeatureVecMat, testLabelsMat,
 			"test_pedestrians/*.jpg", "test_vehicles/*.jpg");
+
+	// Predict the testing samples class with the classifier
 	Mat testResponse;
 	svm.predict(testFeatureVecMat, testResponse);
 
+	// Evaluate the classifier accuracy
 	float count = 0;
 	float accuracy = 0;
 	SVMevaluate(testResponse, count, accuracy, testLabelsMat);
 
+	// Print the result
 	cout << "The accuracy is " << accuracy << "%" << endl;
 
 	return (0);
