@@ -15,7 +15,7 @@
 using namespace cv;
 using namespace std;
 
-#define DESCRIPTOR_TYPE 2 // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
+#define DESCRIPTOR_TYPE 1 // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
 #define USE_MES 1
 
 void convertVectorToMatrix(const vector<vector<float> > &hogResult, Mat &mat) {
@@ -60,7 +60,7 @@ void SVMtrain(CvSVM &svm, Mat &featureVecMat, Mat &labelsMat) {
 	CvMat trainingDesc = featureVecMat;
 	CvMat trainingLabels = labelsMat;
 	svm.train(&trainingDesc, &trainingLabels, Mat(), Mat(), params);
-	svm.save("svm_classifier.xml");
+	svm.save("svm_bb_classifier.xml");
 }
 
 void histogram(const Mat &src, Mat &hist, int numPatterns) {
@@ -337,6 +337,7 @@ int main(int argc, char** argv) {
 		// Valutare l'accuracy del descrittore per i validation set e salvarla (su file probabilmente)
 		// Classificare i test set con hog, lbp e bb e pesare i risultati con l'accuracy
 		// Conviene utilizzare 3 variabili diverse per SVM hog, lbp e bb.
+
 	}
 
 	return (0);
