@@ -15,9 +15,9 @@
 using namespace cv;
 using namespace std;
 
-int DESCRIPTOR_TYPE = 2; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
-int LOAD_CLASSIFIER = 0;
-int USE_MES = 1; // If MES is used, the DESCRIPTOR_TYPE and LOAD_CLASSIFIER vars are not considered
+int DESCRIPTOR_TYPE = 0; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
+int LOAD_CLASSIFIER = 1;
+int USE_MES = 0; // If MES is used, the DESCRIPTOR_TYPE and LOAD_CLASSIFIER vars are not considered
 
 void convertVectorToMatrix(const vector<vector<float> > &hogResult, Mat &mat) {
 	int featureVecSize = hogResult[0].size();
@@ -353,17 +353,15 @@ int main(int argc, char** argv) {
 		// Print the result
 		cout << "The accuracy is " << accuracy << "%" << endl;
 	} else {
-		// Calcolare, offline, i tre classificatori (3 xml per hog,lbp,bb) con i set di training
-		// Caricare i validation set
-		// Valutare l'accuracy del descrittore per i validation set e salvarla (su file probabilmente)
-		// Classificare i test set con hog, lbp e bb e pesare i risultati con l'accuracy
-		// Conviene utilizzare 3 variabili diverse per SVM hog, lbp e bb.
+		// Use MES
+
+		// Load the 3 trained classifiers
 		CvSVM svm_hog, svm_lbp, svm_bb;
 		svm_hog.load("svm_hog_classifier.xml");
 		svm_lbp.load("svm_lbp_classifier.xml");
 		svm_bb.load("svm_bb_classifier.xml");
 
-		// This vector contains the 3 accuracies for hog, lbp and bb for the validation set
+		// This vector contains the 3 accuracies for hog, lbp and bb classifiers for the validation set
 		vector<float> accuracies;
 		for (int i = 0; i < 3; i++) {
 			DESCRIPTOR_TYPE = i;
@@ -437,6 +435,7 @@ int main(int argc, char** argv) {
 				break;
 			}
 
+			// Populate the weightedResponse matrix
 			for (int j = 0; j < testResponse.rows; j++) {
 				weightedResponse.at<float>(j, testResponse.at<float>(j, 0)) +=
 						accuracies.at(i);
