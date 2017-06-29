@@ -207,17 +207,17 @@ void computeBB(Mat &featureVecMat, const vector<Mat> &img) {
 			dimensions.push_back(dim);
 
 			/*
-			// Draw the rotated bouding box
-			Mat drawing = Mat::zeros(canny_mat.size(), CV_8UC3);
-			Point2f rect_vertices[4];
-			rotated_bounding.points(rect_vertices);
-			for (int j = 0; j < 4; j++)
-				line(drawing, rect_vertices[j], rect_vertices[(j + 1) % 4],
-						Scalar(120, 200, 200), 1, 8);
+			 // Draw the rotated bouding box
+			 Mat drawing = Mat::zeros(canny_mat.size(), CV_8UC3);
+			 Point2f rect_vertices[4];
+			 rotated_bounding.points(rect_vertices);
+			 for (int j = 0; j < 4; j++)
+			 line(drawing, rect_vertices[j], rect_vertices[(j + 1) % 4],
+			 Scalar(120, 200, 200), 1, 8);
 
-			imshow("Rotated bounding box", drawing);
-			waitKey();
-			*/
+			 imshow("Rotated bounding box", drawing);
+			 waitKey();
+			 */
 		} else {
 			vector<float> dim;
 			dim.push_back(0);
@@ -255,8 +255,8 @@ void loadLabels(vector<int> &labels, int pedNum, int vehNum, int unkNum) {
 	}
 }
 
-void loadImages(vector<Mat> &images, int &pedNum, int &vehNum, int &unkNum,
-		String pedPath, String vehPath, String unkPath) {
+void loadImages(vector<Mat> &images, String pedPath, String vehPath,
+		String unkPath) {
 	vector<String> pedFilesNames;
 	glob(pedPath, pedFilesNames, true);
 	for (unsigned int i = 0; i < pedFilesNames.size(); i++) {
@@ -266,7 +266,6 @@ void loadImages(vector<Mat> &images, int &pedNum, int &vehNum, int &unkNum,
 			resize(img, img, Size(100, 100));
 		images.push_back(img);
 	}
-	pedNum = pedFilesNames.size();
 
 	vector<String> vehFilesNames;
 	glob(vehPath, vehFilesNames, true);
@@ -277,7 +276,6 @@ void loadImages(vector<Mat> &images, int &pedNum, int &vehNum, int &unkNum,
 			resize(img, img, Size(100, 100));
 		images.push_back(img);
 	}
-	vehNum = vehFilesNames.size();
 
 	vector<String> unkFilesNames;
 	glob(unkPath, unkFilesNames, true);
@@ -288,20 +286,29 @@ void loadImages(vector<Mat> &images, int &pedNum, int &vehNum, int &unkNum,
 			resize(img, img, Size(100, 100));
 		images.push_back(img);
 	}
-	unkNum = unkFilesNames.size();
 }
 
-void createClassifierMatrices(Mat &featureVecMat, Mat &labelsMat,
-		String pedPath, String vehPath, String unkPath) {
-	// Loads samples and corresponding labels
-	vector<Mat> images;
-	int pedNum, vehNum, unkNum;
-	loadImages(images, pedNum, vehNum, unkNum, pedPath, vehPath, unkPath);
+void createLabelsMat(Mat &labelsMat, String pedPath, String vehPath,
+		String unkPath) {
+	// Loads all the samples names to calculate the number of samples
+	vector<String> pedFilesNames, vehFilesNames, unkFilesNames;
+	glob(pedPath, pedFilesNames, true);
+	glob(vehPath, vehFilesNames, true);
+	glob(unkPath, unkFilesNames, true);
+
 	vector<int> labels;
-	loadLabels(labels, pedNum, vehNum, unkNum);
+	loadLabels(labels, pedFilesNames.size(), vehFilesNames.size(),
+			unkFilesNames.size());
 	// Converts the vector<int> of labels into a Mat (a column vector) of float
 	labelsMat = Mat(labels.size(), 1, CV_32FC1);
 	convertVectorToMatrix(labels, labelsMat);
+}
+
+void createFeatureVectorsMat(Mat &featureVecMat, String pedPath, String vehPath,
+		String unkPath) {
+	// Loads samples and corresponding labels
+	vector<Mat> images;
+	loadImages(images, pedPath, vehPath, unkPath);
 
 	switch (DESCRIPTOR_TYPE) {
 	case 0: {
@@ -337,9 +344,10 @@ int main(int argc, char** argv) {
 		if (!LOAD_CLASSIFIER) {
 			// Create the matrix of all the feature vectors of training samples and the matrix of all the labels of training samples
 			Mat featureVecMat, labelsMat;
-			createClassifierMatrices(featureVecMat, labelsMat,
-					"train_pedestrians/*.jpg", "train_vehicles/*.jpg",
-					"train_unknown/*.jpg");
+			createFeatureVectorsMat(featureVecMat, "train_pedestrians/*.jpg",
+					"train_vehicles/*.jpg", "train_unknown/*.jpg");
+			createLabelsMat(labelsMat, "train_pedestrians/*.jpg",
+					"train_vehicles/*.jpg", "train_unknown/*.jpg");
 			// Train the SVM classifier
 			SVMtrain(svm, featureVecMat, labelsMat);
 		} else {
@@ -350,9 +358,10 @@ int main(int argc, char** argv) {
 
 		// Create the matrix of all the feature vectors of testing samples and the matrix of all the labels of testing samples
 		Mat testFeatureVecMat, testLabelsMat;
-		createClassifierMatrices(testFeatureVecMat, testLabelsMat,
-				"test_pedestrians/*.jpg", "test_vehicles/*.jpg",
-				"test_unknown/*.jpg");
+		createFeatureVectorsMat(testFeatureVecMat, "test_pedestrians/*.jpg",
+				"test_vehicles/*.jpg", "test_unknown/*.jpg");
+		createLabelsMat(testLabelsMat, "test_pedestrians/*.jpg",
+				"test_vehicles/*.jpg", "test_unknown/*.jpg");
 
 		// Predict the testing samples class with the classifier
 		Mat testResponse;
@@ -374,14 +383,19 @@ int main(int argc, char** argv) {
 		svm_lbp.load("svm_1_classifier.xml");
 		svm_bb.load("svm_2_classifier.xml");
 
+		// Create the matrix containing all the labels for the validation samples
+		Mat validLabelsMat;
+		createLabelsMat(validLabelsMat, "valid_pedestrians/*.jpg",
+				"valid_vehicles/*.jpg", "valid_unknown/*.jpg");
+
 		// This vector contains the 3 accuracies for hog, lbp and bb classifiers for the validation set
 		vector<float> accuracies;
 		for (int i = 0; i < 3; i++) {
 			DESCRIPTOR_TYPE = i;
 
 			// Create the matrix of all the feature vectors of validation samples and the matrix of all the labels of validation samples
-			Mat validFeatureVecMat, validLabelsMat;
-			createClassifierMatrices(validFeatureVecMat, validLabelsMat,
+			Mat validFeatureVecMat;
+			createFeatureVectorsMat(validFeatureVecMat,
 					"valid_pedestrians/*.jpg", "valid_vehicles/*.jpg",
 					"valid_unknown/*.jpg");
 
@@ -421,7 +435,11 @@ int main(int argc, char** argv) {
 		Mat weightedResponse = Mat::zeros(
 				pedFilesNames.size() + vehFilesNames.size()
 						+ unkFilesNames.size(), 3, CV_32FC1);
+
+		// Create the matrix containing all the labels for the test samples
 		Mat testLabelsMat;
+		createLabelsMat(testLabelsMat, "test_pedestrians/*.jpg",
+				"test_vehicles/*.jpg", "test_unknown/*.jpg");
 
 		// Predict the testing samples labels with the 3 classifiers and weight the results with the accuracies
 		for (int i = 0; i < 3; i++) {
@@ -429,9 +447,8 @@ int main(int argc, char** argv) {
 
 			// Create the matrix of all the feature vectors of testing samples and the matrix of all the labels of testing samples
 			Mat testFeatureVecMat;
-			createClassifierMatrices(testFeatureVecMat, testLabelsMat,
-					"test_pedestrians/*.jpg", "test_vehicles/*.jpg",
-					"test_unknown/*.jpg");
+			createFeatureVectorsMat(testFeatureVecMat, "test_pedestrians/*.jpg",
+					"test_vehicles/*.jpg", "test_unknown/*.jpg");
 
 			// Predict the testing samples class with the classifiers
 			Mat testResponse;
