@@ -1,35 +1,48 @@
-%YAML:1.0
-my_svm: !!opencv-ml-svm
-   svm_type: C_SVC
-   kernel: { type:LINEAR }
-   C: 1.
-   term_criteria: { epsilon:1.1920928955078125e-07, iterations:1000 }
-   var_all: 2
-   var_count: 2
-   class_count: 3
-   class_labels: !!opencv-matrix
-      rows: 1
-      cols: 3
-      dt: i
-      data: [ 0, 1, 2 ]
-   sv_total: 3
-   support_vectors:
-      - [ -5.12646809e-02, -5.06890938e-02 ]
-      - [ -3.26000457e-03, 2.04167627e-02 ]
-      - [ 1.90254431e-02, 1.88118294e-02 ]
-   decision_functions:
-      -
-         sv_count: 1
-         rho: -6.6375872071517028e+00
-         alpha: [ 1. ]
-         index: [ 0 ]
-      -
-         sv_count: 1
-         rho: 3.6782502048878080e-01
-         alpha: [ 1. ]
-         index: [ 1 ]
-      -
-         sv_count: 1
-         rho: 1.8344755936198880e+00
-         alpha: [ 1. ]
-         index: [ 2 ]
+<?xml version="1.0"?>
+<opencv_storage>
+<my_svm type_id="opencv-ml-svm">
+  <svm_type>C_SVC</svm_type>
+  <kernel><type>LINEAR</type></kernel>
+  <C>1.</C>
+  <term_criteria><epsilon>1.1920928955078125e-07</epsilon>
+    <iterations>1000</iterations></term_criteria>
+  <var_all>2</var_all>
+  <var_count>2</var_count>
+  <class_count>3</class_count>
+  <class_labels type_id="opencv-matrix">
+    <rows>1</rows>
+    <cols>3</cols>
+    <dt>i</dt>
+    <data>
+      0 1 2</data></class_labels>
+  <sv_total>3</sv_total>
+  <support_vectors>
+    <_>
+      -5.89455999e-02 -6.04369678e-02</_>
+    <_>
+      1.32827861e-02 3.22843231e-02</_>
+    <_>
+      2.07203627e-02 2.12445930e-02</_></support_vectors>
+  <decision_functions>
+    <_>
+      <sv_count>1</sv_count>
+      <rho>-7.3940631274597903e+00</rho>
+      <alpha>
+        1.</alpha>
+      <index>
+        0</index></_>
+    <_>
+      <sv_count>1</sv_count>
+      <rho>9.3333281440089233e-01</rho>
+      <alpha>
+        1.</alpha>
+      <index>
+        1</index></_>
+    <_>
+      <sv_count>1</sv_count>
+      <rho>1.9506526569051743e+00</rho>
+      <alpha>
+        1.</alpha>
+      <index>
+        2</index></_></decision_functions></my_svm>
+</opencv_storage>

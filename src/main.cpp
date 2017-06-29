@@ -15,7 +15,7 @@
 using namespace cv;
 using namespace std;
 
-int DESCRIPTOR_TYPE = 0; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
+int DESCRIPTOR_TYPE = 1; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
 int LOAD_CLASSIFIER = 1;
 int USE_MES = 1; // If MES is used, the DESCRIPTOR_TYPE and LOAD_CLASSIFIER vars are not considered
 
@@ -176,10 +176,8 @@ void computeBB(Mat &featureVecMat, const vector<Mat> &img) {
 		Mat canny_mat;
 		Canny(img[i], canny_mat, 20, 70, 3, false);
 
-		/*
-		 imshow("Canny output", canny_mat);
-		 imshow("original", img[i]);
-		 */
+		// Median blur to remove a little of salt noise
+		medianBlur(canny_mat, canny_mat, 3);
 
 		// Find contours
 		vector<vector<Point> > contours;
@@ -207,25 +205,25 @@ void computeBB(Mat &featureVecMat, const vector<Mat> &img) {
 			dim.push_back(rotated_bounding.size.width);
 			dim.push_back(rotated_bounding.size.height);
 			dimensions.push_back(dim);
+
+			/*
+			// Draw the rotated bouding box
+			Mat drawing = Mat::zeros(canny_mat.size(), CV_8UC3);
+			Point2f rect_vertices[4];
+			rotated_bounding.points(rect_vertices);
+			for (int j = 0; j < 4; j++)
+				line(drawing, rect_vertices[j], rect_vertices[(j + 1) % 4],
+						Scalar(120, 200, 200), 1, 8);
+
+			imshow("Rotated bounding box", drawing);
+			waitKey();
+			*/
 		} else {
 			vector<float> dim;
 			dim.push_back(0);
 			dim.push_back(0);
 			dimensions.push_back(dim);
 		}
-
-		/*
-		 // Draw the rotated bouding box
-		 Mat drawing = Mat::zeros(canny_mat.size(), CV_8UC3);
-		 Point2f rect_vertices[4];
-		 rotated_bounding.points(rect_vertices);
-		 for (int j = 0; j < 4; j++)
-		 line(drawing, rect_vertices[j], rect_vertices[(j + 1) % 4],
-		 Scalar(120, 200, 200), 1, 8);
-
-		 imshow("Rotated bounding box", drawing);
-		 waitKey();
-		 */
 	}
 
 	// Converts the vector<vector<float>> into a Mat of float
