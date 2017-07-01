@@ -12,12 +12,16 @@
 
 #include <iostream>
 
+#include <rapidxml.hpp>
+#include <rapidxml_utils.hpp>
+
 using namespace cv;
 using namespace std;
+using namespace rapidxml;
 
-int DESCRIPTOR_TYPE = 1; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
+int DESCRIPTOR_TYPE = 3; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
 int LOAD_CLASSIFIER = 1;
-int USE_MES = 1; // If MES is used, the DESCRIPTOR_TYPE and LOAD_CLASSIFIER vars are not considered
+int USE_MES = 0; // If MES is used, the DESCRIPTOR_TYPE and LOAD_CLASSIFIER vars are not considered
 
 void convertVectorToMatrix(const vector<vector<float> > &hogResult, Mat &mat) {
 	int featureVecSize = hogResult[0].size();
@@ -336,7 +340,7 @@ void createFeatureVectorsMat(Mat &featureVecMat, String pedPath, String vehPath,
 	}
 }
 
-int main(int argc, char** argv) {
+void classify() {
 	// If it's not MES
 	if (!USE_MES) {
 		CvSVM svm;
@@ -495,6 +499,73 @@ int main(int argc, char** argv) {
 
 		// Print the result
 		cout << "The accuracy is " << accuracy << "%" << endl;
+	}
+}
+
+int main(int argc, char** argv) {
+	// Open the video file
+	VideoCapture cap("video4.mp4");
+	if (!cap.isOpened()) {
+		cout << "Cannot open the video file" << endl;
+		return (-1);
+	}
+
+	// Parse the xml file into doc
+	file<> xmlFile("video4.xgtf");
+	xml_document<> doc;
+	doc.parse<0>(xmlFile.data());
+
+	// Read the <sourcefile>...</sourcefile> node
+	xml_node<> *sourcefileNode =
+			doc.first_node()->first_node("data")->first_node();
+
+	// Iterate through all <object>...</object> nodes
+	for (xml_node<> *objNode = sourcefileNode->first_node("object"); objNode;
+			objNode = objNode->next_sibling()) {
+		// Read the 2nd <attribute>...</attribute> node inside <object>...</object>
+		xml_node<> *attributeNode = objNode->first_node()->next_sibling();
+
+		// Iterate through all <data:bbox>...</data:bbox> nodes
+		for (xml_node<> *bboxNode = attributeNode->first_node("data:bbox");
+				bboxNode; bboxNode = bboxNode->next_sibling()) {
+			// Read the frame number of the bbox
+			stringstream ss(bboxNode->first_attribute("framespan")->value());
+			string framespan;
+			getline(ss, framespan, ':');
+			double frame = atof(framespan.c_str());
+
+			// Read the width, height, x and y of the bbox
+			int height = atoi(bboxNode->first_attribute("height")->value());
+			int width = atoi(bboxNode->first_attribute("width")->value());
+			int x = atoi(bboxNode->first_attribute("x")->value());
+			int y = atoi(bboxNode->first_attribute("y")->value());
+
+			// Set the next frame
+			cap.set(CV_CAP_PROP_POS_FRAMES, frame);
+
+			// Save the frame into a Mat (image)
+			Mat frameImg;
+			bool success = cap.read(frameImg);
+			if (!success) {
+				cout << "Cannot read  frame " << endl;
+				continue;
+			}
+
+			// Check if the bbox goes out of the img
+			if (x + width <= frameImg.cols && y + height <= frameImg.rows) {
+				// Create the Rect to crop the bbox from the original frame
+				Rect roi(Point(x, y), Point(x + width, y + height));
+
+				// Crop the bbox from the original frame
+				Mat cropImage = frameImg(roi);
+
+				// Save the bbox crop as jpeg file
+				stringstream st;
+				st << "cropped_bbox/" << frame << "_" << x << "_" << y << "_"
+						<< width << "_" << height << ".jpg";
+				imwrite(st.str(), cropImage);
+			}
+		}
 	}
 
 	return (0);

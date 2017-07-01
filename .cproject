@@ -26,6 +26,7 @@
 									<listOptionValue builtIn="false" value="/usr/local/include/opencv2"/>
 									<listOptionValue builtIn="false" value="/usr/local/include/opencv"/>
 									<listOptionValue builtIn="false" value="/usr/local/include"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/libs}&quot;"/>
 								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.438356538" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
 							</tool>
@@ -36,6 +37,7 @@
 									<listOptionValue builtIn="false" value="/usr/local/include"/>
 									<listOptionValue builtIn="false" value="/usr/local/include/opencv2"/>
 									<listOptionValue builtIn="false" value="/usr/local/include/opencv"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/libs}&quot;"/>
 								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.cpp.compiler.input.2124949291" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.input"/>
 							</tool>
@@ -43,6 +45,7 @@
 							<tool id="cdt.managedbuild.tool.gnu.cross.cpp.linker.10171777" name="Cross G++ Linker" superClass="cdt.managedbuild.tool.gnu.cross.cpp.linker">
 								<option id="gnu.cpp.link.option.paths.1877980424" name="Library search path (-L)" superClass="gnu.cpp.link.option.paths" useByScannerDiscovery="false" valueType="libPaths">
 									<listOptionValue builtIn="false" value="/usr/local/lib"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/libs}&quot;"/>
 								</option>
 								<option id="gnu.cpp.link.option.libs.1205356868" name="Libraries (-l)" superClass="gnu.cpp.link.option.libs" useByScannerDiscovery="false" valueType="libs">
 									<listOptionValue builtIn="false" value="opencv_highgui"/>
@@ -132,5 +135,13 @@
 	</storageModule>
 	<storageModule moduleId="org.eclipse.cdt.core.LanguageSettingsProviders"/>
 	<storageModule moduleId="org.eclipse.cdt.make.core.buildtargets"/>
-	<storageModule moduleId="refreshScope"/>
+	<storageModule moduleId="refreshScope" versionNumber="2">
+		<configuration configurationName="Debug">
+			<resource resourceType="PROJECT" workspacePath="/ObjRecognition"/>
+		</configuration>
+		<configuration configurationName="Release">
+			<resource resourceType="PROJECT" workspacePath="/ObjRecognition"/>
+		</configuration>
+	</storageModule>
+	<storageModule moduleId="org.eclipse.cdt.internal.ui.text.commentOwnerProjectMappings"/>
 </cproject>
