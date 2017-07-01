@@ -248,7 +248,7 @@ void concatFeatureVectors(Mat &concatResult, const vector<Mat> &images) {
 }
 
 void loadLabels(vector<int> &labels, int pedNum, int vehNum, int unkNum) {
-	// Atm 0 means Pedestrian label and 1 means Vehicles and 2 means Unknown
+	// Atm 0 means Pedestrian label, 1 means Vehicles and 2 means Unknown
 	for (int i = 0; i < (pedNum + vehNum + unkNum); i++) {
 		if (i < pedNum)
 			labels.push_back(0);
@@ -504,14 +504,14 @@ void classify() {
 
 int main(int argc, char** argv) {
 	// Open the video file
-	VideoCapture cap("video4.mp4");
+	VideoCapture cap("video1.mp4");
 	if (!cap.isOpened()) {
 		cout << "Cannot open the video file" << endl;
 		return (-1);
 	}
 
 	// Parse the xml file into doc
-	file<> xmlFile("video4.xgtf");
+	file<> xmlFile("video1.xgtf");
 	xml_document<> doc;
 	doc.parse<0>(xmlFile.data());
 
@@ -552,7 +552,7 @@ int main(int argc, char** argv) {
 			}
 
 			// Check if the bbox goes out of the img
-			if (x + width <= frameImg.cols && y + height <= frameImg.rows) {
+			if (x >= 0 && y >= 0 && (x + width) <= frameImg.cols && (y + height) <= frameImg.rows) {
 				// Create the Rect to crop the bbox from the original frame
 				Rect roi(Point(x, y), Point(x + width, y + height));
 
@@ -561,7 +561,7 @@ int main(int argc, char** argv) {
 
 				// Save the bbox crop as jpeg file
 				stringstream st;
-				st << "cropped_bbox/" << frame << "_" << x << "_" << y << "_"
+				st << "video1_bboxes/" << frame << "_" << x << "_" << y << "_"
 						<< width << "_" << height << ".jpg";
 				imwrite(st.str(), cropImage);
 			}
