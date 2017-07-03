@@ -19,8 +19,8 @@ using namespace cv;
 using namespace std;
 using namespace rapidxml;
 
-int DESCRIPTOR_TYPE = 3; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
-int LOAD_CLASSIFIER = 1;
+int DESCRIPTOR_TYPE = 0; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
+int LOAD_CLASSIFIER = 0;
 int USE_MES = 0; // If MES is used, the DESCRIPTOR_TYPE and LOAD_CLASSIFIER vars are not considered
 
 void convertVectorToMatrix(const vector<vector<float> > &hogResult, Mat &mat) {
@@ -172,60 +172,70 @@ void computeLBP(Mat &featureVecMat, const vector<Mat> &img) {
 	convertVectorToMatrix(lbpResult, featureVecMat);
 }
 
-void computeBB(Mat &featureVecMat, const vector<Mat> &img) {
+void computeBB(Mat &featureVecMat, const vector<Mat> &img,
+		const bool isNotTraining) {
 	vector<vector<float> > dimensions;
 
-	for (unsigned int i = 0; i < img.size(); i++) {
-		// Detect edges using Canny
-		Mat canny_mat;
-		Canny(img[i], canny_mat, 20, 70, 3, false);
+	if (!isNotTraining) {
+		for (unsigned int i = 0; i < img.size(); i++) {
+			// Detect edges using Canny
+			Mat canny_mat;
+			Canny(img[i], canny_mat, 20, 70, 3, false);
 
-		// Median blur to remove a little of salt noise
-		medianBlur(canny_mat, canny_mat, 3);
+			// Median blur to remove a little of salt noise
+			medianBlur(canny_mat, canny_mat, 3);
 
-		// Find contours
-		vector<vector<Point> > contours;
-		vector<Vec4i> hierarchy;
-		findContours(canny_mat, contours, hierarchy, CV_RETR_EXTERNAL,
-				CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
+			// Find contours
+			vector<vector<Point> > contours;
+			vector<Vec4i> hierarchy;
+			findContours(canny_mat, contours, hierarchy, CV_RETR_EXTERNAL,
+					CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
 
-		// Merge all contours into one vector
-		vector<Point> merged_contours_points;
-		for (unsigned int j = 0; j < contours.size(); j++) {
-			for (unsigned int k = 0; k < contours[j].size(); k++) {
-				merged_contours_points.push_back(contours[j][k]);
+			// Merge all contours into one vector
+			vector<Point> merged_contours_points;
+			for (unsigned int j = 0; j < contours.size(); j++) {
+				for (unsigned int k = 0; k < contours[j].size(); k++) {
+					merged_contours_points.push_back(contours[j][k]);
+				}
+			}
+
+			if (merged_contours_points.size() > 0) {
+				// Merge all lines (contours) in one line through convex hull
+				vector<Point> hull;
+				convexHull(merged_contours_points, hull);
+
+				// Get the rotated bounding box
+				RotatedRect rotated_bounding = minAreaRect(hull);
+
+				vector<float> dim;
+				dim.push_back(rotated_bounding.size.width);
+				dim.push_back(rotated_bounding.size.height);
+				dimensions.push_back(dim);
+
+				/*
+				 // Draw the rotated bouding box
+				 Mat drawing = Mat::zeros(canny_mat.size(), CV_8UC3);
+				 Point2f rect_vertices[4];
+				 rotated_bounding.points(rect_vertices);
+				 for (int j = 0; j < 4; j++)
+				 line(drawing, rect_vertices[j], rect_vertices[(j + 1) % 4],
+				 Scalar(120, 200, 200), 1, 8);
+
+				 imshow("Rotated bounding box", drawing);
+				 waitKey();
+				 */
+			} else {
+				vector<float> dim;
+				dim.push_back(0);
+				dim.push_back(0);
+				dimensions.push_back(dim);
 			}
 		}
-
-		if (merged_contours_points.size() > 0) {
-			// Merge all lines (contours) in one line through convex hull
-			vector<Point> hull;
-			convexHull(merged_contours_points, hull);
-
-			// Get the rotated bounding box
-			RotatedRect rotated_bounding = minAreaRect(hull);
-
+	} else {
+		for (unsigned int i = 0; i < img.size(); i++) {
 			vector<float> dim;
-			dim.push_back(rotated_bounding.size.width);
-			dim.push_back(rotated_bounding.size.height);
-			dimensions.push_back(dim);
-
-			/*
-			 // Draw the rotated bouding box
-			 Mat drawing = Mat::zeros(canny_mat.size(), CV_8UC3);
-			 Point2f rect_vertices[4];
-			 rotated_bounding.points(rect_vertices);
-			 for (int j = 0; j < 4; j++)
-			 line(drawing, rect_vertices[j], rect_vertices[(j + 1) % 4],
-			 Scalar(120, 200, 200), 1, 8);
-
-			 imshow("Rotated bounding box", drawing);
-			 waitKey();
-			 */
-		} else {
-			vector<float> dim;
-			dim.push_back(0);
-			dim.push_back(0);
+			dim.push_back(img[i].cols);
+			dim.push_back(img[i].rows);
 			dimensions.push_back(dim);
 		}
 	}
@@ -235,13 +245,14 @@ void computeBB(Mat &featureVecMat, const vector<Mat> &img) {
 	convertVectorToMatrix(dimensions, featureVecMat);
 }
 
-void concatFeatureVectors(Mat &concatResult, const vector<Mat> &images) {
+void concatFeatureVectors(Mat &concatResult, const vector<Mat> &images,
+		const bool isNotTraining) {
 	Mat hogResult;
 	computeHOG(hogResult, images);
 	Mat lbpResult;
 	computeLBP(lbpResult, images);
 	Mat bbResult;
-	computeBB(bbResult, images);
+	computeBB(bbResult, images, isNotTraining);
 
 	Mat matArray[] = { hogResult, lbpResult, bbResult };
 	hconcat(matArray, sizeof(matArray) / sizeof(*matArray), concatResult);
@@ -309,7 +320,7 @@ void createLabelsMat(Mat &labelsMat, String pedPath, String vehPath,
 }
 
 void createFeatureVectorsMat(Mat &featureVecMat, String pedPath, String vehPath,
-		String unkPath) {
+		String unkPath, bool isNotTraining) {
 	// Loads samples and corresponding labels
 	vector<Mat> images;
 	loadImages(images, pedPath, vehPath, unkPath);
@@ -327,12 +338,12 @@ void createFeatureVectorsMat(Mat &featureVecMat, String pedPath, String vehPath,
 		break;
 	case 2: {
 		// Computes the bounding boxes, calculating a matrix in which each row is a feature vector (width, height).
-		computeBB(featureVecMat, images);
+		computeBB(featureVecMat, images, isNotTraining);
 	}
 		break;
 	case 3: {
 		// Computes the concatenation of different feature vectors (hog+lbp+bb).
-		concatFeatureVectors(featureVecMat, images);
+		concatFeatureVectors(featureVecMat, images, isNotTraining);
 	}
 		break;
 	default:
@@ -349,7 +360,7 @@ void classify() {
 			// Create the matrix of all the feature vectors of training samples and the matrix of all the labels of training samples
 			Mat featureVecMat, labelsMat;
 			createFeatureVectorsMat(featureVecMat, "train_pedestrians/*.jpg",
-					"train_vehicles/*.jpg", "train_unknown/*.jpg");
+					"train_vehicles/*.jpg", "train_unknown/*.jpg", false);
 			createLabelsMat(labelsMat, "train_pedestrians/*.jpg",
 					"train_vehicles/*.jpg", "train_unknown/*.jpg");
 			// Train the SVM classifier
@@ -363,7 +374,7 @@ void classify() {
 		// Create the matrix of all the feature vectors of testing samples and the matrix of all the labels of testing samples
 		Mat testFeatureVecMat, testLabelsMat;
 		createFeatureVectorsMat(testFeatureVecMat, "test_pedestrians/*.jpg",
-				"test_vehicles/*.jpg", "test_unknown/*.jpg");
+				"test_vehicles/*.jpg", "test_unknown/*.jpg", true);
 		createLabelsMat(testLabelsMat, "test_pedestrians/*.jpg",
 				"test_vehicles/*.jpg", "test_unknown/*.jpg");
 
@@ -401,7 +412,7 @@ void classify() {
 			Mat validFeatureVecMat;
 			createFeatureVectorsMat(validFeatureVecMat,
 					"valid_pedestrians/*.jpg", "valid_vehicles/*.jpg",
-					"valid_unknown/*.jpg");
+					"valid_unknown/*.jpg", true);
 
 			// Predict the validation samples class with the classifiers
 			Mat testResponse;
@@ -452,7 +463,7 @@ void classify() {
 			// Create the matrix of all the feature vectors of testing samples and the matrix of all the labels of testing samples
 			Mat testFeatureVecMat;
 			createFeatureVectorsMat(testFeatureVecMat, "test_pedestrians/*.jpg",
-					"test_vehicles/*.jpg", "test_unknown/*.jpg");
+					"test_vehicles/*.jpg", "test_unknown/*.jpg", true);
 
 			// Predict the testing samples class with the classifiers
 			Mat testResponse;
@@ -502,16 +513,17 @@ void classify() {
 	}
 }
 
-int main(int argc, char** argv) {
+void extractSamplesFromVideo(const String pathVideo, const String pathXml,
+		const String pathSave) {
 	// Open the video file
-	VideoCapture cap("video1.mp4");
+	VideoCapture cap(pathVideo);
 	if (!cap.isOpened()) {
 		cout << "Cannot open the video file" << endl;
-		return (-1);
+		return;
 	}
 
 	// Parse the xml file into doc
-	file<> xmlFile("video1.xgtf");
+	file<> xmlFile(pathXml.c_str());
 	xml_document<> doc;
 	doc.parse<0>(xmlFile.data());
 
@@ -552,7 +564,8 @@ int main(int argc, char** argv) {
 			}
 
 			// Check if the bbox goes out of the img
-			if (x >= 0 && y >= 0 && (x + width) <= frameImg.cols && (y + height) <= frameImg.rows) {
+			if (x >= 0 && y >= 0 && (x + width) <= frameImg.cols
+					&& (y + height) <= frameImg.rows) {
 				// Create the Rect to crop the bbox from the original frame
 				Rect roi(Point(x, y), Point(x + width, y + height));
 
@@ -561,12 +574,15 @@ int main(int argc, char** argv) {
 
 				// Save the bbox crop as jpeg file
 				stringstream st;
-				st << "video1_bboxes/" << frame << "_" << x << "_" << y << "_"
-						<< width << "_" << height << ".jpg";
+				st << pathSave << frame << "_" << x << "_" << y << "_" << width
+						<< "_" << height << ".jpg";
 				imwrite(st.str(), cropImage);
 			}
 		}
 	}
+}
 
+int main(int argc, char** argv) {
+	classify();
 	return (0);
 }
