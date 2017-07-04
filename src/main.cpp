@@ -160,7 +160,7 @@ void computeLBP(Mat &featureVecMat, const vector<Mat> &img) {
 
 	for (unsigned int i = 0; i < img.size(); i++) {
 		// Tiny bit of smoothing is always a good idea
-		GaussianBlur(img[i], img[i], Size(7,7), 5, 3, BORDER_CONSTANT);
+		GaussianBlur(img[i], img[i], Size(7, 7), 5, 3, BORDER_CONSTANT);
 		Mat lbp;
 		ELBP(img[i], lbp, 4, 4);
 		//OLBP(img[i], lbp);
@@ -175,18 +175,95 @@ void computeLBP(Mat &featureVecMat, const vector<Mat> &img) {
 	convertVectorToMatrix(lbpResult, featureVecMat);
 }
 
+void countWhitePixels(const Mat matrix, int &whitePixels) {
+	whitePixels = 0;
+	for (int i = 0; i < matrix.rows; i++) {
+		for (int j = 0; j < matrix.cols; j++) {
+			if (matrix.at<uchar>(i, j) == 255)
+				whitePixels++;
+		}
+	}
+}
+
 void computeBB(Mat &featureVecMat, const vector<Mat> &img,
 		const bool isNotTraining) {
+	vector<Mat> hsvImg;
 	vector<vector<float> > dimensions;
 
 	if (!isNotTraining) {
-		for (unsigned int i = 0; i < img.size(); i++) {
+		vector<String> pedFilesNames;
+		glob("train_pedestrians/*.jpg", pedFilesNames, true);
+		for (unsigned int i = 0; i < pedFilesNames.size(); i++) {
+			Mat im = imread(pedFilesNames[i]);
+			resize(im, im, Size(100, 100));
+
+			// Apply Gaussian blur to remove some noise
+			GaussianBlur(im, im, Size(7, 7), 5, 3);
+
+			stringstream ss;
+			ss << "Original_" << i;
+			imshow(ss.str(), im);
+
+			Mat hsvImg;
+			cvtColor(im, hsvImg, COLOR_BGR2HSV);
+
+			// define range of colors in HSV
+			vector<vector<Scalar> > colors;
+
+			vector<Scalar> brown;
+			Scalar lower_brown(8, 19, 0);
+			Scalar upper_brown(28, 255, 255);
+			brown.push_back(lower_brown);
+			brown.push_back(upper_brown);
+
+			vector<Scalar> green;
+			Scalar lower_green(38, 26, 0);
+			Scalar upper_green(78, 255, 255);
+			green.push_back(lower_green);
+			green.push_back(upper_green);
+
+			vector<Scalar> gray;
+			Scalar lower_gray(0, 0, 80);
+			Scalar upper_gray(180, 255, 200);
+			gray.push_back(lower_gray);
+			gray.push_back(upper_gray);
+
+			colors.push_back(brown);
+			colors.push_back(green);
+			colors.push_back(gray);
+
+			int maxWhitePixels = 0;
+			vector<Scalar> bestColor;
+			Mat mask;
+			for (unsigned int j = 0; j < colors.size(); j++) {
+				// Threshold the HSV image to get only background of this color
+				inRange(hsvImg, colors[j].at(0), colors[j].at(1), mask);
+
+				int whitePixels;
+				countWhitePixels(mask, whitePixels);
+				if (whitePixels > maxWhitePixels) {
+					maxWhitePixels = whitePixels;
+					bestColor = colors[j];
+				}
+			}
+
+			cout << bestColor[0] << " " << bestColor[1] << endl;
+			// Invert the mask to get the object of interest
+			bitwise_not(mask, mask);
+
+			// Bitwise-AND mask and original image
+			Mat res;
+			bitwise_and(im, im, res, mask);
+			ss.str("");
+			ss << "Mask_" << i;
+			imshow(ss.str(), res);
+
 			// Detect edges using Canny
 			Mat canny_mat;
-			Canny(img[i], canny_mat, 20, 70, 3, false);
-
-			// Median blur to remove a little of salt noise
-			medianBlur(canny_mat, canny_mat, 3);
+			Canny(res, canny_mat, 20, 70, 3, false);
+			ss.str("");
+			ss << "Canny_" << i;
+			imshow(ss.str(), canny_mat);
 
 			// Find contours
 			vector<vector<Point> > contours;
@@ -202,50 +279,30 @@ void computeBB(Mat &featureVecMat, const vector<Mat> &img,
 				}
 			}
 
-			if (merged_contours_points.size() > 0) {
-				// Merge all lines (contours) in one line through convex hull
-				vector<Point> hull;
-				convexHull(merged_contours_points, hull);
+			// Merge all lines (contours) in one line through convex hull
+			vector<Point> hull;
+			convexHull(merged_contours_points, hull);
 
-				// Get the rotated bounding box
-				RotatedRect rotated_bounding = minAreaRect(hull);
+			// Get the rotated bounding box
+			RotatedRect rotated_bounding = minAreaRect(hull);
 
-				vector<float> dim;
-				dim.push_back(rotated_bounding.size.width);
-				dim.push_back(rotated_bounding.size.height);
-				dimensions.push_back(dim);
-
-				/*
-				 // Draw the rotated bouding box
-				 Mat drawing = Mat::zeros(canny_mat.size(), CV_8UC3);
-				 Point2f rect_vertices[4];
-				 rotated_bounding.points(rect_vertices);
-				 for (int j = 0; j < 4; j++)
-				 line(drawing, rect_vertices[j], rect_vertices[(j + 1) % 4],
-				 Scalar(120, 200, 200), 1, 8);
-
-				 imshow("Rotated bounding box", drawing);
-				 waitKey();
-				 */
-			} else {
-				vector<float> dim;
-				dim.push_back(0);
-				dim.push_back(0);
-				dimensions.push_back(dim);
-			}
-		}
-	} else {
-		for (unsigned int i = 0; i < img.size(); i++) {
 			vector<float> dim;
-			dim.push_back(img[i].cols);
-			dim.push_back(img[i].rows);
+			dim.push_back(rotated_bounding.size.width);
+			dim.push_back(rotated_bounding.size.height);
 			dimensions.push_back(dim);
+
+			// Draw the rotated bouding box
+			Mat drawing = Mat::zeros(canny_mat.size(), CV_8UC3);
+			Point2f rect_vertices[4];
+			rotated_bounding.points(rect_vertices);
+			for (int j = 0; j < 4; j++)
+				line(drawing, rect_vertices[j], rect_vertices[(j + 1) % 4],
+						Scalar(120, 200, 200), 1, 8);
+			imshow("Rotated bounding box", drawing);
+
+			waitKey(0);
 		}
 	}
-
-	// Converts the vector<vector<float>> into a Mat of float
-	featureVecMat = Mat(dimensions.size(), dimensions[0].size(), CV_32FC1);
-	convertVectorToMatrix(dimensions, featureVecMat);
 }
 
 void concatFeatureVectors(Mat &concatResult, const vector<Mat> &images,
@@ -280,8 +337,8 @@ void loadImages(vector<Mat> &images, String pedPath, String vehPath,
 	for (unsigned int i = 0; i < pedFilesNames.size(); i++) {
 		Mat img = imread(pedFilesNames[i], CV_LOAD_IMAGE_GRAYSCALE);
 		// Don't resize in the bounding box case
-		if (DESCRIPTOR_TYPE != 2)
-			resize(img, img, Size(100, 100));
+		//if (DESCRIPTOR_TYPE != 2)
+		resize(img, img, Size(100, 100));
 		images.push_back(img);
 	}
 
@@ -290,8 +347,8 @@ void loadImages(vector<Mat> &images, String pedPath, String vehPath,
 	for (unsigned int i = 0; i < vehFilesNames.size(); i++) {
 		Mat img = imread(vehFilesNames[i], CV_LOAD_IMAGE_GRAYSCALE);
 		// Don't resize in the bounding box case
-		if (DESCRIPTOR_TYPE != 2)
-			resize(img, img, Size(100, 100));
+		//if (DESCRIPTOR_TYPE != 2)
+		resize(img, img, Size(100, 100));
 		images.push_back(img);
 	}
 
@@ -300,8 +357,8 @@ void loadImages(vector<Mat> &images, String pedPath, String vehPath,
 	for (unsigned int i = 0; i < unkFilesNames.size(); i++) {
 		Mat img = imread(unkFilesNames[i], CV_LOAD_IMAGE_GRAYSCALE);
 		// Don't resize in the bounding box case
-		if (DESCRIPTOR_TYPE != 2)
-			resize(img, img, Size(100, 100));
+		//if (DESCRIPTOR_TYPE != 2)
+		resize(img, img, Size(100, 100));
 		images.push_back(img);
 	}
 }
@@ -354,8 +411,128 @@ void createFeatureVectorsMat(Mat &featureVecMat, String pedPath, String vehPath,
 	}
 }
 
+void computeMES() {
+	// Load the 3 trained classifiers
+	CvSVM svm_hog, svm_lbp, svm_bb;
+	svm_hog.load("svm_0_classifier.xml");
+	svm_lbp.load("svm_1_classifier.xml");
+	svm_bb.load("svm_2_classifier.xml");
+
+	// Create the matrix containing all the labels for the validation samples
+	Mat validLabelsMat;
+	createLabelsMat(validLabelsMat, "valid_pedestrians/*.jpg",
+			"valid_vehicles/*.jpg", "valid_unknown/*.jpg");
+
+	// This vector contains the 3 accuracies for hog, lbp and bb classifiers for the validation set
+	vector<float> accuracies;
+	for (int i = 0; i < 3; i++) {
+		DESCRIPTOR_TYPE = i;
+
+		// Create the matrix of all the feature vectors of validation samples and the matrix of all the labels of validation samples
+		Mat validFeatureVecMat;
+		createFeatureVectorsMat(validFeatureVecMat, "valid_pedestrians/*.jpg",
+				"valid_vehicles/*.jpg", "valid_unknown/*.jpg", true);
+
+		// Predict the validation samples class with the classifiers
+		Mat testResponse;
+		switch (DESCRIPTOR_TYPE) {
+		case 0: {
+			svm_hog.predict(validFeatureVecMat, testResponse);
+		}
+			break;
+		case 1: {
+			svm_lbp.predict(validFeatureVecMat, testResponse);
+		}
+			break;
+		case 2: {
+			svm_bb.predict(validFeatureVecMat, testResponse);
+		}
+			break;
+		default:
+			break;
+		}
+
+		// Evaluate the classifier accuracy
+		float count = 0;
+		float accuracy = 0;
+		SVMevaluate(testResponse, count, accuracy, validLabelsMat);
+
+		accuracies.push_back(accuracy);
+	}
+
+	// Init the matrix of weightedResponse
+	// The number of rows is equal to the total number of testing samples; the number of columns is equal to the number of classes
+	vector<String> pedFilesNames, vehFilesNames, unkFilesNames;
+	glob("test_pedestrians/*.jpg", pedFilesNames, true);
+	glob("test_vehicles/*.jpg", vehFilesNames, true);
+	glob("test_unknown/*.jpg", unkFilesNames, true);
+	Mat weightedResponse = Mat::zeros(
+			pedFilesNames.size() + vehFilesNames.size() + unkFilesNames.size(),
+			3, CV_32FC1);
+
+	// Create the matrix containing all the labels for the test samples
+	Mat testLabelsMat;
+	createLabelsMat(testLabelsMat, "test_pedestrians/*.jpg",
+			"test_vehicles/*.jpg", "test_unknown/*.jpg");
+
+	// Predict the testing samples labels with the 3 classifiers and weight the results with the accuracies
+	for (int i = 0; i < 3; i++) {
+		DESCRIPTOR_TYPE = i;
+
+		// Create the matrix of all the feature vectors of testing samples and the matrix of all the labels of testing samples
+		Mat testFeatureVecMat;
+		createFeatureVectorsMat(testFeatureVecMat, "test_pedestrians/*.jpg",
+				"test_vehicles/*.jpg", "test_unknown/*.jpg", true);
+
+		// Predict the testing samples class with the classifiers
+		Mat testResponse;
+		switch (DESCRIPTOR_TYPE) {
+		case 0: {
+			svm_hog.predict(testFeatureVecMat, testResponse);
+		}
+			break;
+		case 1: {
+			svm_lbp.predict(testFeatureVecMat, testResponse);
+		}
+			break;
+		case 2: {
+			svm_bb.predict(testFeatureVecMat, testResponse);
+		}
+			break;
+		default:
+			break;
+		}
+
+		// Populate the weightedResponse matrix
+		for (int j = 0; j < testResponse.rows; j++) {
+			weightedResponse.at<float>(j, testResponse.at<float>(j, 0)) +=
+					accuracies.at(i);
+		}
+	}
+
+	// Calculate the final matrix of responses (1 column and n rows, where n is the number of testing samples) finding the max for each row
+	Mat finalTestResponse(weightedResponse.rows, 1, CV_32FC1);
+	for (int i = 0; i < weightedResponse.rows; i++) {
+		float max = 0;
+		for (int j = 0; j < weightedResponse.cols; j++) {
+			if (max < weightedResponse.at<float>(i, j)) {
+				max = weightedResponse.at<float>(i, j);
+				finalTestResponse.at<float>(i, 0) = j;
+			}
+		}
+	}
+
+	// Evaluate the classifier accuracy
+	float count = 0;
+	float accuracy = 0;
+	SVMevaluate(finalTestResponse, count, accuracy, testLabelsMat);
+
+	// Print the result
+	cout << "The accuracy is " << accuracy << "%" << endl;
+}
+
 void classify() {
-	// If it's not MES
+	// If MES is not used
 	if (!USE_MES) {
 		CvSVM svm;
 
@@ -394,125 +571,7 @@ void classify() {
 		cout << "The accuracy is " << accuracy << "%" << endl;
 	} else {
 		// Use MES
-
-		// Load the 3 trained classifiers
-		CvSVM svm_hog, svm_lbp, svm_bb;
-		svm_hog.load("svm_0_classifier.xml");
-		svm_lbp.load("svm_1_classifier.xml");
-		svm_bb.load("svm_2_classifier.xml");
-
-		// Create the matrix containing all the labels for the validation samples
-		Mat validLabelsMat;
-		createLabelsMat(validLabelsMat, "valid_pedestrians/*.jpg",
-				"valid_vehicles/*.jpg", "valid_unknown/*.jpg");
-
-		// This vector contains the 3 accuracies for hog, lbp and bb classifiers for the validation set
-		vector<float> accuracies;
-		for (int i = 0; i < 3; i++) {
-			DESCRIPTOR_TYPE = i;
-
-			// Create the matrix of all the feature vectors of validation samples and the matrix of all the labels of validation samples
-			Mat validFeatureVecMat;
-			createFeatureVectorsMat(validFeatureVecMat,
-					"valid_pedestrians/*.jpg", "valid_vehicles/*.jpg",
-					"valid_unknown/*.jpg", true);
-
-			// Predict the validation samples class with the classifiers
-			Mat testResponse;
-			switch (DESCRIPTOR_TYPE) {
-			case 0: {
-				svm_hog.predict(validFeatureVecMat, testResponse);
-			}
-				break;
-			case 1: {
-				svm_lbp.predict(validFeatureVecMat, testResponse);
-			}
-				break;
-			case 2: {
-				svm_bb.predict(validFeatureVecMat, testResponse);
-			}
-				break;
-			default:
-				break;
-			}
-
-			// Evaluate the classifier accuracy
-			float count = 0;
-			float accuracy = 0;
-			SVMevaluate(testResponse, count, accuracy, validLabelsMat);
-
-			accuracies.push_back(accuracy);
-		}
-
-		// Init the matrix of weightedResponse
-		// The number of rows is equal to the total number of testing samples; the number of columns is equal to the number of classes
-		vector<String> pedFilesNames, vehFilesNames, unkFilesNames;
-		glob("test_pedestrians/*.jpg", pedFilesNames, true);
-		glob("test_vehicles/*.jpg", vehFilesNames, true);
-		glob("test_unknown/*.jpg", unkFilesNames, true);
-		Mat weightedResponse = Mat::zeros(
-				pedFilesNames.size() + vehFilesNames.size()
-						+ unkFilesNames.size(), 3, CV_32FC1);
-
-		// Create the matrix containing all the labels for the test samples
-		Mat testLabelsMat;
-		createLabelsMat(testLabelsMat, "test_pedestrians/*.jpg",
-				"test_vehicles/*.jpg", "test_unknown/*.jpg");
-
-		// Predict the testing samples labels with the 3 classifiers and weight the results with the accuracies
-		for (int i = 0; i < 3; i++) {
-			DESCRIPTOR_TYPE = i;
-
-			// Create the matrix of all the feature vectors of testing samples and the matrix of all the labels of testing samples
-			Mat testFeatureVecMat;
-			createFeatureVectorsMat(testFeatureVecMat, "test_pedestrians/*.jpg",
-					"test_vehicles/*.jpg", "test_unknown/*.jpg", true);
-
-			// Predict the testing samples class with the classifiers
-			Mat testResponse;
-			switch (DESCRIPTOR_TYPE) {
-			case 0: {
-				svm_hog.predict(testFeatureVecMat, testResponse);
-			}
-				break;
-			case 1: {
-				svm_lbp.predict(testFeatureVecMat, testResponse);
-			}
-				break;
-			case 2: {
-				svm_bb.predict(testFeatureVecMat, testResponse);
-			}
-				break;
-			default:
-				break;
-			}
-
-			// Populate the weightedResponse matrix
-			for (int j = 0; j < testResponse.rows; j++) {
-				weightedResponse.at<float>(j, testResponse.at<float>(j, 0)) +=
-						accuracies.at(i);
-			}
-		}
-
-		// Calculate the final matrix of responses (1 column and n rows, where n is the number of testing samples) finding the max for each row
-		Mat finalTestResponse(weightedResponse.rows, 1, CV_32FC1);
-		for (int i = 0; i < weightedResponse.rows; i++) {
-			float max = 0;
-			for (int j = 0; j < weightedResponse.cols; j++) {
-				if (max < weightedResponse.at<float>(i, j)) {
-					max = weightedResponse.at<float>(i, j);
-					finalTestResponse.at<float>(i, 0) = j;
-				}
-			}
-		}
-
-		// Evaluate the classifier accuracy
-		float count = 0;
-		float accuracy = 0;
-		SVMevaluate(finalTestResponse, count, accuracy, testLabelsMat);
-
-		// Print the result
-		cout << "The accuracy is " << accuracy << "%" << endl;
+		computeMES();
 	}
 }
 
@@ -589,3 +648,4 @@ int main(int argc, char** argv) {
 	classify();
 	return (0);
 }
+
