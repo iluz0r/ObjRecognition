@@ -19,7 +19,7 @@ using namespace cv;
 using namespace std;
 using namespace rapidxml;
 
-int DESCRIPTOR_TYPE = 2; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
+int DESCRIPTOR_TYPE = 0; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
 int LOAD_CLASSIFIER = 0;
 int USE_MES = 0; // If MES is used, the DESCRIPTOR_TYPE and LOAD_CLASSIFIER vars are not considered
 
@@ -145,8 +145,12 @@ void computeHOG(Mat &featureVecMat, const vector<Mat> &img) {
 	vector<vector<float> > hogResult;
 
 	for (unsigned int i = 0; i < img.size(); i++) {
+		// Convert image from BGR to Gray
+		Mat grayImg;
+		cvtColor(img[i], grayImg, COLOR_BGR2GRAY);
+		// Calculate the feature vector of the gray image and push back it into the hogResult
 		vector<float> featureVector;
-		hog.compute(img[i], featureVector);
+		hog.compute(grayImg, featureVector);
 		hogResult.push_back(featureVector);
 	}
 
@@ -159,10 +163,13 @@ void computeLBP(Mat &featureVecMat, const vector<Mat> &img) {
 	vector<Mat> lbpResult;
 
 	for (unsigned int i = 0; i < img.size(); i++) {
+		// Convert image from BGR to Gray
+		Mat grayImg;
+		cvtColor(img[i], grayImg, COLOR_BGR2GRAY);
 		// Tiny bit of smoothing is always a good idea
-		GaussianBlur(img[i], img[i], Size(7, 7), 5, 3, BORDER_CONSTANT);
+		GaussianBlur(grayImg, grayImg, Size(7, 7), 5, 3, BORDER_CONSTANT);
 		Mat lbp;
-		ELBP(img[i], lbp, 4, 4);
+		ELBP(grayImg, lbp, 4, 4);
 		//OLBP(img[i], lbp);
 		normalize(lbp, lbp, 0, 255, NORM_MINMAX, CV_8UC1);
 		Mat hist;
@@ -185,100 +192,99 @@ void countWhitePixels(const Mat matrix, int &whitePixels) {
 	}
 }
 
-void computeBB(Mat &featureVecMat, const vector<Mat> &img,
-		const bool isNotTraining) {
+// Mat3b bgr(Vec3b(100,24,90)) for example
+void convertColorFromBGR2HSV(const Mat3b &bgr, Mat3b &hsv) {
+	// Convert a BGR color to HSV
+	cvtColor(bgr, hsv, COLOR_BGR2HSV);
+}
+
+void computeBB(Mat &featureVecMat, const vector<Mat> &img) {
 	vector<Mat> hsvImg;
 	vector<vector<float> > dimensions;
 
-	if (!isNotTraining) {
-		vector<String> pedFilesNames;
-		glob("train_pedestrians/*.jpg", pedFilesNames, true);
-		for (unsigned int i = 0; i < pedFilesNames.size(); i++) {
-			Mat im = imread(pedFilesNames[i]);
-			resize(im, im, Size(100, 100));
+	for (unsigned int i = 0; i < img.size(); i++) {
+		// Apply Gaussian blur to remove some noise
+		Mat im;
+		GaussianBlur(img[i], im, Size(7, 7), 5, 3);
 
-			// Apply Gaussian blur to remove some noise
-			GaussianBlur(im, im, Size(7, 7), 5, 3);
+		// Convert the image from BGR to HSV
+		Mat hsvImg;
+		cvtColor(im, hsvImg, COLOR_BGR2HSV);
 
-			stringstream ss;
-			ss << "Original_" << i;
-			imshow(ss.str(), im);
+		// Define range of colors in HSV
+		vector<vector<Scalar> > colors;
 
-			Mat hsvImg;
-			cvtColor(im, hsvImg, COLOR_BGR2HSV);
+		// The colors are choosen by H-+10, S from minS to 255, V from minV to 255
+		vector<Scalar> brown;
+		Scalar lower_brown(3, 60, 95);
+		Scalar upper_brown(23, 255, 255);
+		brown.push_back(lower_brown);
+		brown.push_back(upper_brown);
 
-			// define range of colors in HSV
-			vector<vector<Scalar> > colors;
+		vector<Scalar> green;
+		Scalar lower_green(30, 20, 40);
+		Scalar upper_green(80, 255, 255);
+		green.push_back(lower_green);
+		green.push_back(upper_green);
 
-			vector<Scalar> brown;
-			Scalar lower_brown(8, 19, 0);
-			Scalar upper_brown(28, 255, 255);
-			brown.push_back(lower_brown);
-			brown.push_back(upper_brown);
+		vector<Scalar> gray;
+		Scalar lower_gray(0, 0, 80);
+		Scalar upper_gray(255, 50, 220);
+		gray.push_back(lower_gray);
+		gray.push_back(upper_gray);
 
-			vector<Scalar> green;
-			Scalar lower_green(38, 26, 0);
-			Scalar upper_green(78, 255, 255);
-			green.push_back(lower_green);
-			green.push_back(upper_green);
+		vector<Scalar> white;
+		Scalar lower_white(0, 0, 235);
+		Scalar upper_white(255, 5, 255);
+		white.push_back(lower_white);
+		white.push_back(upper_white);
 
-			vector<Scalar> gray;
-			Scalar lower_gray(0, 0, 80);
-			Scalar upper_gray(180, 255, 200);
-			gray.push_back(lower_gray);
-			gray.push_back(upper_gray);
+		colors.push_back(brown);
+		colors.push_back(green);
+		colors.push_back(gray);
+		colors.push_back(white);
 
-			colors.push_back(brown);
-			colors.push_back(green);
-			colors.push_back(gray);
-
-			int maxWhitePixels = 0;
-			vector<Scalar> bestColor;
+		int maxWhitePixels = 0;
+		Mat bestMask;
+		for (unsigned int j = 0; j < colors.size(); j++) {
+			// Threshold the HSV image to get only background of this color
 			Mat mask;
-			for (unsigned int j = 0; j < colors.size(); j++) {
-				// Threshold the HSV image to get only background of this color
-				inRange(hsvImg, colors[j].at(0), colors[j].at(1), mask);
+			inRange(hsvImg, colors[j].at(0), colors[j].at(1), mask);
 
-				int whitePixels;
-				countWhitePixels(mask, whitePixels);
-				if (whitePixels > maxWhitePixels) {
-					maxWhitePixels = whitePixels;
-					bestColor = colors[j];
-				}
+			int whitePixels;
+			countWhitePixels(mask, whitePixels);
+			if (whitePixels > maxWhitePixels) {
+				maxWhitePixels = whitePixels;
+				bestMask = mask;
 			}
+		}
 
-			cout << bestColor[0] << " " << bestColor[1] << endl;
-			// Invert the mask to get the object of interest
-			bitwise_not(mask, mask);
+		// Invert the mask to get the object of interest
+		bitwise_not(bestMask, bestMask);
 
-			// Bitwise-AND mask and original image
-			Mat res;
-			bitwise_and(im, im, res, mask);
-			ss.str("");
-			ss << "Mask_" << i;
-			imshow(ss.str(), res);
+		// Bitwise-AND mask and original image
+		Mat res;
+		bitwise_and(im, im, res, bestMask);
 
-			// Detect edges using Canny
-			Mat canny_mat;
-			Canny(res, canny_mat, 20, 70, 3, false);
-			ss.str("");
-			ss << "Canny_" << i;
-			imshow(ss.str(), canny_mat);
+		// Detect edges using Canny
+		Mat canny_mat;
+		Canny(res, canny_mat, 20, 70, 3, false);
 
-			// Find contours
-			vector<vector<Point> > contours;
-			vector<Vec4i> hierarchy;
-			findContours(canny_mat, contours, hierarchy, CV_RETR_EXTERNAL,
-					CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
+		// Find contours
+		vector<vector<Point> > contours;
+		vector<Vec4i> hierarchy;
+		findContours(canny_mat, contours, hierarchy, CV_RETR_EXTERNAL,
+				CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
 
-			// Merge all contours into one vector
-			vector<Point> merged_contours_points;
-			for (unsigned int j = 0; j < contours.size(); j++) {
-				for (unsigned int k = 0; k < contours[j].size(); k++) {
-					merged_contours_points.push_back(contours[j][k]);
-				}
+		// Merge all contours into one vector
+		vector<Point> merged_contours_points;
+		for (unsigned int j = 0; j < contours.size(); j++) {
+			for (unsigned int k = 0; k < contours[j].size(); k++) {
+				merged_contours_points.push_back(contours[j][k]);
 			}
+		}
 
+		if (merged_contours_points.size() > 0) {
 			// Merge all lines (contours) in one line through convex hull
 			vector<Point> hull;
 			convexHull(merged_contours_points, hull);
@@ -291,28 +297,36 @@ void computeBB(Mat &featureVecMat, const vector<Mat> &img,
 			dim.push_back(rotated_bounding.size.height);
 			dimensions.push_back(dim);
 
-			// Draw the rotated bouding box
-			Mat drawing = Mat::zeros(canny_mat.size(), CV_8UC3);
-			Point2f rect_vertices[4];
-			rotated_bounding.points(rect_vertices);
-			for (int j = 0; j < 4; j++)
-				line(drawing, rect_vertices[j], rect_vertices[(j + 1) % 4],
-						Scalar(120, 200, 200), 1, 8);
-			imshow("Rotated bounding box", drawing);
-
-			waitKey(0);
+			/*
+			 // Draw the rotated bouding box
+			 Mat drawing = Mat::zeros(canny_mat.size(), CV_8UC3);
+			 Point2f rect_vertices[4];
+			 rotated_bounding.points(rect_vertices);
+			 for (int j = 0; j < 4; j++)
+			 line(drawing, rect_vertices[j], rect_vertices[(j + 1) % 4],
+			 Scalar(120, 200, 200), 1, 8);
+			 imshow("Rotated bounding box", drawing);
+			 waitKey(0);
+			 */
+		} else {
+			vector<float> dim;
+			dim.push_back(0);
+			dim.push_back(0);
+			dimensions.push_back(dim);
 		}
 	}
+	// Converts the vector<vector<float>> into a Mat of float
+	featureVecMat = Mat(dimensions.size(), dimensions[0].size(), CV_32FC1);
+	convertVectorToMatrix(dimensions, featureVecMat);
 }
 
-void concatFeatureVectors(Mat &concatResult, const vector<Mat> &images,
-		const bool isNotTraining) {
+void concatFeatureVectors(Mat &concatResult, const vector<Mat> &images) {
 	Mat hogResult;
 	computeHOG(hogResult, images);
 	Mat lbpResult;
 	computeLBP(lbpResult, images);
 	Mat bbResult;
-	computeBB(bbResult, images, isNotTraining);
+	computeBB(bbResult, images);
 
 	Mat matArray[] = { hogResult, lbpResult, bbResult };
 	hconcat(matArray, sizeof(matArray) / sizeof(*matArray), concatResult);
@@ -335,7 +349,7 @@ void loadImages(vector<Mat> &images, String pedPath, String vehPath,
 	vector<String> pedFilesNames;
 	glob(pedPath, pedFilesNames, true);
 	for (unsigned int i = 0; i < pedFilesNames.size(); i++) {
-		Mat img = imread(pedFilesNames[i], CV_LOAD_IMAGE_GRAYSCALE);
+		Mat img = imread(pedFilesNames[i], CV_LOAD_IMAGE_COLOR);
 		// Don't resize in the bounding box case
 		//if (DESCRIPTOR_TYPE != 2)
 		resize(img, img, Size(100, 100));
@@ -345,7 +359,7 @@ void loadImages(vector<Mat> &images, String pedPath, String vehPath,
 	vector<String> vehFilesNames;
 	glob(vehPath, vehFilesNames, true);
 	for (unsigned int i = 0; i < vehFilesNames.size(); i++) {
-		Mat img = imread(vehFilesNames[i], CV_LOAD_IMAGE_GRAYSCALE);
+		Mat img = imread(vehFilesNames[i], CV_LOAD_IMAGE_COLOR);
 		// Don't resize in the bounding box case
 		//if (DESCRIPTOR_TYPE != 2)
 		resize(img, img, Size(100, 100));
@@ -355,7 +369,7 @@ void loadImages(vector<Mat> &images, String pedPath, String vehPath,
 	vector<String> unkFilesNames;
 	glob(unkPath, unkFilesNames, true);
 	for (unsigned int i = 0; i < unkFilesNames.size(); i++) {
-		Mat img = imread(unkFilesNames[i], CV_LOAD_IMAGE_GRAYSCALE);
+		Mat img = imread(unkFilesNames[i], CV_LOAD_IMAGE_COLOR);
 		// Don't resize in the bounding box case
 		//if (DESCRIPTOR_TYPE != 2)
 		resize(img, img, Size(100, 100));
@@ -398,12 +412,12 @@ void createFeatureVectorsMat(Mat &featureVecMat, String pedPath, String vehPath,
 		break;
 	case 2: {
 		// Computes the bounding boxes, calculating a matrix in which each row is a feature vector (width, height).
-		computeBB(featureVecMat, images, isNotTraining);
+		computeBB(featureVecMat, images);
 	}
 		break;
 	case 3: {
 		// Computes the concatenation of different feature vectors (hog+lbp+bb).
-		concatFeatureVectors(featureVecMat, images, isNotTraining);
+		concatFeatureVectors(featureVecMat, images);
 	}
 		break;
 	default:
