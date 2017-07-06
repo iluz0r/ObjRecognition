@@ -19,7 +19,7 @@ using namespace cv;
 using namespace std;
 using namespace rapidxml;
 
-int DESCRIPTOR_TYPE = 1; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
+int DESCRIPTOR_TYPE = 3; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
 int LOAD_CLASSIFIER = 0;
 int USE_MES = 0; // If MES is used, the DESCRIPTOR_TYPE and LOAD_CLASSIFIER vars are not considered
 
@@ -207,10 +207,6 @@ void computeBB(Mat &featureVecMat, const vector<Mat> &img) {
 		Mat im;
 		GaussianBlur(img[i], im, Size(7, 7), 5, 3);
 
-		stringstream ss;
-		ss << "prova/" << i << "_original.jpg";
-		imwrite(ss.str(), img[i]);
-
 		// Convert the image from BGR to HSV
 		Mat hsvImg;
 		cvtColor(im, hsvImg, COLOR_BGR2HSV);
@@ -263,10 +259,6 @@ void computeBB(Mat &featureVecMat, const vector<Mat> &img) {
 			}
 		}
 
-		ss.str("");
-		ss << "prova/" << i << "_bgmask" << ".jpg";
-		imwrite(ss.str(), bestMask);
-
 		// Invert the mask to get the object of interest
 		bitwise_not(bestMask, bestMask);
 
@@ -274,17 +266,9 @@ void computeBB(Mat &featureVecMat, const vector<Mat> &img) {
 		Mat res;
 		bitwise_and(im, im, res, bestMask);
 
-		ss.str("");
-		ss << "prova/" << i << "_result" << ".jpg";
-		imwrite(ss.str(), res);
-
 		// Detect edges using Canny
 		Mat canny_mat;
 		Canny(res, canny_mat, 20, 70, 3, false);
-
-		ss.str("");
-		ss << "prova/" << i << "_edges" << ".jpg";
-		imwrite(ss.str(), canny_mat);
 
 		// Find contours
 		vector<vector<Point> > contours;
@@ -367,8 +351,8 @@ void loadImages(vector<Mat> &images, String pedPath, String vehPath,
 	for (unsigned int i = 0; i < pedFilesNames.size(); i++) {
 		Mat img = imread(pedFilesNames[i], CV_LOAD_IMAGE_COLOR);
 		// Don't resize in the bounding box case
-		//if (DESCRIPTOR_TYPE != 2)
-		resize(img, img, Size(100, 100));
+		if (DESCRIPTOR_TYPE != 2)
+			resize(img, img, Size(100, 100));
 		images.push_back(img);
 	}
 
@@ -377,8 +361,8 @@ void loadImages(vector<Mat> &images, String pedPath, String vehPath,
 	for (unsigned int i = 0; i < vehFilesNames.size(); i++) {
 		Mat img = imread(vehFilesNames[i], CV_LOAD_IMAGE_COLOR);
 		// Don't resize in the bounding box case
-		//if (DESCRIPTOR_TYPE != 2)
-		resize(img, img, Size(100, 100));
+		if (DESCRIPTOR_TYPE != 2)
+			resize(img, img, Size(100, 100));
 		images.push_back(img);
 	}
 
@@ -387,8 +371,8 @@ void loadImages(vector<Mat> &images, String pedPath, String vehPath,
 	for (unsigned int i = 0; i < unkFilesNames.size(); i++) {
 		Mat img = imread(unkFilesNames[i], CV_LOAD_IMAGE_COLOR);
 		// Don't resize in the bounding box case
-		//if (DESCRIPTOR_TYPE != 2)
-		resize(img, img, Size(100, 100));
+		if (DESCRIPTOR_TYPE != 2)
+			resize(img, img, Size(100, 100));
 		images.push_back(img);
 	}
 }
@@ -676,6 +660,13 @@ void extractSamplesFromVideo(const String pathVideo, const String pathXml,
 
 int main(int argc, char** argv) {
 	//extractSamplesFromVideo("prova.mp4", "prova.xgtf", "prova/");
+	/*
+	 vector<String> vehFilesNames;
+	 glob("test_vehicles/*.jpg", vehFilesNames, true);
+	 for (int i = 0; i < testResponse.rows; i++)
+	 cout << vehFilesNames[i] << " -> " << testResponse.at<float>(i, 0)
+	 << endl;
+	 */
 	classify();
 	return (0);
 }
