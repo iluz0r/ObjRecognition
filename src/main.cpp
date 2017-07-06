@@ -19,9 +19,9 @@ using namespace cv;
 using namespace std;
 using namespace rapidxml;
 
-int DESCRIPTOR_TYPE = 3; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
-int LOAD_CLASSIFIER = 0;
-int USE_MES = 0; // If MES is used, the DESCRIPTOR_TYPE and LOAD_CLASSIFIER vars are not considered
+int DESCRIPTOR_TYPE = 1; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
+int LOAD_CLASSIFIER = 1;
+int USE_MES = 0; // If MES is used, DESCRIPTOR_TYPE and LOAD_CLASSIFIER are not considered
 
 void convertVectorToMatrix(const vector<vector<float> > &hogResult, Mat &mat) {
 	int featureVecSize = hogResult[0].size();
@@ -425,29 +425,17 @@ void createFeatureVectorsMat(Mat &featureVecMat, String pedPath, String vehPath,
 	}
 }
 
-void computeMES() {
-	// Load the 3 trained classifiers
-	CvSVM svm_hog, svm_lbp, svm_bb;
-	svm_hog.load("svm_0_classifier.xml");
-	svm_lbp.load("svm_1_classifier.xml");
-	svm_bb.load("svm_2_classifier.xml");
-
-	// Create the matrix containing all the labels for the validation samples
-	Mat validLabelsMat;
-	createLabelsMat(validLabelsMat, "valid_pedestrians/*.jpg",
-			"valid_vehicles/*.jpg", "valid_unknown/*.jpg");
-
-	// This vector contains the 3 accuracies for hog, lbp and bb classifiers for the validation set
-	vector<float> accuracies;
+void createConfusionMatrices(vector<Mat> &confusionMatrices, const CvSVM &svm_hog,
+		const CvSVM &svm_lbp, const CvSVM &svm_bb, const Mat &validLabelsMat) {
 	for (int i = 0; i < 3; i++) {
 		DESCRIPTOR_TYPE = i;
 
 		// Create the matrix of all the feature vectors of validation samples and the matrix of all the labels of validation samples
 		Mat validFeatureVecMat;
-		createFeatureVectorsMat(validFeatureVecMat, "valid_pedestrians/*.jpg",
-				"valid_vehicles/*.jpg", "valid_unknown/*.jpg", true);
+		createFeatureVectorsMat(validFeatureVecMat, "test_pedestrians/*.jpg",
+				"test_vehicles/*.jpg", "test_unknown/*.jpg", true);
 
-		// Predict the validation samples class with the classifiers
+		// Predict the classes of validation samples with classifier
 		Mat testResponse;
 		switch (DESCRIPTOR_TYPE) {
 		case 0: {
@@ -466,83 +454,103 @@ void computeMES() {
 			break;
 		}
 
-		// Evaluate the classifier accuracy
-		float count = 0;
-		float accuracy = 0;
-		SVMevaluate(testResponse, count, accuracy, validLabelsMat);
-
-		accuracies.push_back(accuracy);
+		// Confusion matrix (aka classification matrix) has n x n dimension, where n is the number of classes
+		Mat confusionMat = Mat::zeros(3, 3, CV_32SC1);
+		for (int i = 0; i < validLabelsMat.rows; i++) {
+			confusionMat.at<int>(validLabelsMat.at<float>(i, 0),
+					testResponse.at<float>(i, 0))++;}
+		confusionMatrices.push_back(confusionMat);
 	}
+}
 
-	// Init the matrix of weightedResponse
-	// The number of rows is equal to the total number of testing samples; the number of columns is equal to the number of classes
-	vector<String> pedFilesNames, vehFilesNames, unkFilesNames;
-	glob("test_pedestrians/*.jpg", pedFilesNames, true);
-	glob("test_vehicles/*.jpg", vehFilesNames, true);
-	glob("test_unknown/*.jpg", unkFilesNames, true);
-	Mat weightedResponse = Mat::zeros(
-			pedFilesNames.size() + vehFilesNames.size() + unkFilesNames.size(),
-			3, CV_32FC1);
+void computeMES() {
+	// Load the 3 trained classifiers
+	CvSVM svm_hog, svm_lbp, svm_bb;
+	svm_hog.load("svm_0_classifier.xml");
+	svm_lbp.load("svm_1_classifier.xml");
+	svm_bb.load("svm_2_classifier.xml");
 
-	// Create the matrix containing all the labels for the test samples
-	Mat testLabelsMat;
-	createLabelsMat(testLabelsMat, "test_pedestrians/*.jpg",
+	// Create the matrix containing all the labels for the validation samples
+	Mat validLabelsMat;
+	createLabelsMat(validLabelsMat, "test_pedestrians/*.jpg",
 			"test_vehicles/*.jpg", "test_unknown/*.jpg");
 
-	// Predict the testing samples labels with the 3 classifiers and weight the results with the accuracies
-	for (int i = 0; i < 3; i++) {
-		DESCRIPTOR_TYPE = i;
+	// Create the confusion matrices for the 3 classifiers (svm_hog, svm_lbp, svm_bb)
+	vector<Mat> confusionMatrices;
+	createConfusionMatrices(confusionMatrices, svm_hog, svm_lbp, svm_bb, validLabelsMat);
 
-		// Create the matrix of all the feature vectors of testing samples and the matrix of all the labels of testing samples
-		Mat testFeatureVecMat;
-		createFeatureVectorsMat(testFeatureVecMat, "test_pedestrians/*.jpg",
-				"test_vehicles/*.jpg", "test_unknown/*.jpg", true);
 
-		// Predict the testing samples class with the classifiers
-		Mat testResponse;
-		switch (DESCRIPTOR_TYPE) {
-		case 0: {
-			svm_hog.predict(testFeatureVecMat, testResponse);
-		}
-			break;
-		case 1: {
-			svm_lbp.predict(testFeatureVecMat, testResponse);
-		}
-			break;
-		case 2: {
-			svm_bb.predict(testFeatureVecMat, testResponse);
-		}
-			break;
-		default:
-			break;
-		}
+	/*
+	 // Init the matrix of weightedResponse
+	 // The number of rows is equal to the total number of testing samples; the number of columns is equal to the number of classes
+	 vector<String> pedFilesNames, vehFilesNames, unkFilesNames;
+	 glob("test_pedestrians/*.jpg", pedFilesNames, true);
+	 glob("test_vehicles/*.jpg", vehFilesNames, true);
+	 glob("test_unknown/*.jpg", unkFilesNames, true);
+	 Mat weightedResponse = Mat::zeros(
+	 pedFilesNames.size() + vehFilesNames.size() + unkFilesNames.size(),
+	 3, CV_32FC1);
 
-		// Populate the weightedResponse matrix
-		for (int j = 0; j < testResponse.rows; j++) {
-			weightedResponse.at<float>(j, testResponse.at<float>(j, 0)) +=
-					accuracies.at(i);
-		}
-	}
+	 // Create the matrix containing all the labels for the test samples
+	 Mat testLabelsMat;
+	 createLabelsMat(testLabelsMat, "test_pedestrians/*.jpg",
+	 "test_vehicles/*.jpg", "test_unknown/*.jpg");
 
-	// Calculate the final matrix of responses (1 column and n rows, where n is the number of testing samples) finding the max for each row
-	Mat finalTestResponse(weightedResponse.rows, 1, CV_32FC1);
-	for (int i = 0; i < weightedResponse.rows; i++) {
-		float max = 0;
-		for (int j = 0; j < weightedResponse.cols; j++) {
-			if (max < weightedResponse.at<float>(i, j)) {
-				max = weightedResponse.at<float>(i, j);
-				finalTestResponse.at<float>(i, 0) = j;
-			}
-		}
-	}
+	 // Predict the testing samples labels with the 3 classifiers and weight the results with the accuracies
+	 for (int i = 0; i < 3; i++) {
+	 DESCRIPTOR_TYPE = i;
 
-	// Evaluate the classifier accuracy
-	float count = 0;
-	float accuracy = 0;
-	SVMevaluate(finalTestResponse, count, accuracy, testLabelsMat);
+	 // Create the matrix of all the feature vectors of testing samples and the matrix of all the labels of testing samples
+	 Mat testFeatureVecMat;
+	 createFeatureVectorsMat(testFeatureVecMat, "test_pedestrians/*.jpg",
+	 "test_vehicles/*.jpg", "test_unknown/*.jpg", true);
 
-	// Print the result
-	cout << "The accuracy is " << accuracy << "%" << endl;
+	 // Predict the testing samples class with the classifiers
+	 Mat testResponse;
+	 switch (DESCRIPTOR_TYPE) {
+	 case 0: {
+	 svm_hog.predict(testFeatureVecMat, testResponse);
+	 }
+	 break;
+	 case 1: {
+	 svm_lbp.predict(testFeatureVecMat, testResponse);
+	 }
+	 break;
+	 case 2: {
+	 svm_bb.predict(testFeatureVecMat, testResponse);
+	 }
+	 break;
+	 default:
+	 break;
+	 }
+
+	 // Populate the weightedResponse matrix
+	 for (int j = 0; j < testResponse.rows; j++) {
+	 weightedResponse.at<float>(j, testResponse.at<float>(j, 0)) +=
+	 accuracies.at(i);
+	 }
+	 }
+
+	 // Calculate the final matrix of responses (1 column and n rows, where n is the number of testing samples) finding the max for each row
+	 Mat finalTestResponse(weightedResponse.rows, 1, CV_32FC1);
+	 for (int i = 0; i < weightedResponse.rows; i++) {
+	 float max = 0;
+	 for (int j = 0; j < weightedResponse.cols; j++) {
+	 if (max < weightedResponse.at<float>(i, j)) {
+	 max = weightedResponse.at<float>(i, j);
+	 finalTestResponse.at<float>(i, 0) = j;
+	 }
+	 }
+	 }
+
+	 // Evaluate the classifier accuracy
+	 float count = 0;
+	 float accuracy = 0;
+	 SVMevaluate(finalTestResponse, count, accuracy, testLabelsMat);
+
+	 // Print the result
+	 cout << "The accuracy is " << accuracy << "%" << endl;
+	 */
 }
 
 void classify() {
