@@ -23,6 +23,8 @@ int DESCRIPTOR_TYPE = 0; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
 int LOAD_CLASSIFIER = 1;
 int USE_MES = 1; // If MES is used, DESCRIPTOR_TYPE and LOAD_CLASSIFIER are not considered
 int NUM_CLASS = 3; // Number of classes
+int ACC_EVALUATION = 1; // When this param is 1, the system loads the samples from test_pedestrians,
+// test_vehicles and test_unknown folders and give as output the classification accuracy
 
 void convertVectorToMatrix(const vector<vector<float> > &hogResult, Mat &mat) {
 	int featureVecSize = hogResult[0].size();
@@ -345,46 +347,26 @@ void loadLabels(vector<int> &labels, int pedNum, int vehNum, int unkNum) {
 	}
 }
 
-void loadImages(vector<Mat> &images, String pedPath, String vehPath,
-		String unkPath) {
-	vector<String> pedFilesNames;
-	glob(pedPath, pedFilesNames, true);
-	for (unsigned int i = 0; i < pedFilesNames.size(); i++) {
-		Mat img = imread(pedFilesNames[i], CV_LOAD_IMAGE_COLOR);
-		// Don't resize in the bounding box case
-		if (DESCRIPTOR_TYPE != 2)
-			resize(img, img, Size(100, 100));
-		images.push_back(img);
-	}
-
-	vector<String> vehFilesNames;
-	glob(vehPath, vehFilesNames, true);
-	for (unsigned int i = 0; i < vehFilesNames.size(); i++) {
-		Mat img = imread(vehFilesNames[i], CV_LOAD_IMAGE_COLOR);
-		// Don't resize in the bounding box case
-		if (DESCRIPTOR_TYPE != 2)
-			resize(img, img, Size(100, 100));
-		images.push_back(img);
-	}
-
-	vector<String> unkFilesNames;
-	glob(unkPath, unkFilesNames, true);
-	for (unsigned int i = 0; i < unkFilesNames.size(); i++) {
-		Mat img = imread(unkFilesNames[i], CV_LOAD_IMAGE_COLOR);
-		// Don't resize in the bounding box case
-		if (DESCRIPTOR_TYPE != 2)
-			resize(img, img, Size(100, 100));
-		images.push_back(img);
+void loadImages(vector<Mat> &images, vector<String> paths) {
+	for (unsigned int i = 0; i < paths.size(); i++) {
+		vector<String> fileNames;
+		glob(paths[i], fileNames, true);
+		for (unsigned int j = 0; j < fileNames.size(); j++) {
+			Mat img = imread(fileNames[j], CV_LOAD_IMAGE_COLOR);
+			// Don't resize in the bounding box case
+			if (DESCRIPTOR_TYPE != 2)
+				resize(img, img, Size(100, 100));
+			images.push_back(img);
+		}
 	}
 }
 
-void createLabelsMat(Mat &labelsMat, String pedPath, String vehPath,
-		String unkPath) {
+void createLabelsMat(Mat &labelsMat, vector<String> paths) {
 	// Loads all the samples names to calculate the number of samples
 	vector<String> pedFilesNames, vehFilesNames, unkFilesNames;
-	glob(pedPath, pedFilesNames, true);
-	glob(vehPath, vehFilesNames, true);
-	glob(unkPath, unkFilesNames, true);
+	glob(paths[0], pedFilesNames, true);
+	glob(paths[1], vehFilesNames, true);
+	glob(paths[2], unkFilesNames, true);
 
 	vector<int> labels;
 	loadLabels(labels, pedFilesNames.size(), vehFilesNames.size(),
@@ -394,11 +376,10 @@ void createLabelsMat(Mat &labelsMat, String pedPath, String vehPath,
 	convertVectorToMatrix(labels, labelsMat);
 }
 
-void createFeatureVectorsMat(Mat &featureVecMat, String pedPath, String vehPath,
-		String unkPath, bool isNotTraining) {
+void createFeatureVectorsMat(Mat &featureVecMat, vector<String> paths) {
 	// Loads samples and corresponding labels
 	vector<Mat> images;
-	loadImages(images, pedPath, vehPath, unkPath);
+	loadImages(images, paths);
 
 	switch (DESCRIPTOR_TYPE) {
 	case 0: {
@@ -429,7 +410,7 @@ void createFeatureVectorsMat(Mat &featureVecMat, String pedPath, String vehPath,
 void calculateFinalResponse(Mat &finalResponse,
 		const vector<Mat> &votesMatrices,
 		const vector<vector<float> > &accuracies) {
-	for (int i = 0; i < votesMatrices.size(); i++) {
+	for (unsigned int i = 0; i < votesMatrices.size(); i++) {
 		float maxReliability = 0;
 		int bestClass;
 		for (int j = 0; j < NUM_CLASS; j++) {
@@ -466,10 +447,19 @@ void calculateTestResponses(vector<Mat> &testResponses, const CvSVM &svm_hog,
 	for (int i = 0; i < 3; i++) {
 		DESCRIPTOR_TYPE = i;
 
-		// Create the matrix of all the feature vectors of testing samples and the matrix of all the labels of testing samples
+		// Create the matrix of all the feature vectors of testing samples
 		Mat testFeatureVecMat;
-		createFeatureVectorsMat(testFeatureVecMat, "test_pedestrians/*.jpg",
-				"test_vehicles/*.jpg", "test_unknown/*.jpg", true);
+		if (ACC_EVALUATION) {
+			vector<String> paths;
+			paths.push_back("test_pedestrians/*.jpg");
+			paths.push_back("test_vehicles/*.jpg");
+			paths.push_back("test_unknown/*.jpg");
+			createFeatureVectorsMat(testFeatureVecMat, paths);
+		} else {
+			vector<String> path;
+			path.push_back("video1_bboxes/*.jpg");
+			createFeatureVectorsMat(testFeatureVecMat, path);
+		}
 
 		// Predict the testing samples class with the classifiers
 		Mat testResponse;
@@ -518,8 +508,11 @@ void createConfusionMatrices(vector<Mat> &confusionMatrices,
 
 		// Create the matrix of all the feature vectors of validation samples and the matrix of all the labels of validation samples
 		Mat validFeatureVecMat;
-		createFeatureVectorsMat(validFeatureVecMat, "valid_pedestrians/*.jpg",
-				"valid_vehicles/*.jpg", "valid_unknown/*.jpg", true);
+		vector<String> paths;
+		paths.push_back("valid_pedestrians/*.jpg");
+		paths.push_back("valid_vehicles/*.jpg");
+		paths.push_back("valid_unknown/*.jpg");
+		createFeatureVectorsMat(validFeatureVecMat, paths);
 
 		// Predict the classes of validation samples with classifier
 		Mat testResponse;
@@ -559,8 +552,11 @@ void computeMES() {
 
 	// Create the matrix containing all the labels for the validation samples
 	Mat validLabelsMat;
-	createLabelsMat(validLabelsMat, "valid_pedestrians/*.jpg",
-			"valid_vehicles/*.jpg", "valid_unknown/*.jpg");
+	vector<String> paths;
+	paths.push_back("valid_pedestrians/*.jpg");
+	paths.push_back("valid_vehicles/*.jpg");
+	paths.push_back("valid_unknown/*.jpg");
+	createLabelsMat(validLabelsMat, paths);
 
 	// Create the confusion matrices for the 3 classifiers (svm_hog, svm_lbp, svm_bb)
 	vector<Mat> confusionMatrices;
@@ -572,10 +568,15 @@ void computeMES() {
 	vector<vector<float> > accuracies;
 	calculateAccuracies(accuracies, confusionMatrices);
 
-	// Create the matrix containing all the labels for the test samples
 	Mat testLabelsMat;
-	createLabelsMat(testLabelsMat, "test_pedestrians/*.jpg",
-			"test_vehicles/*.jpg", "test_unknown/*.jpg");
+	if (ACC_EVALUATION) {
+		// Create the matrix containing all the labels for the test samples
+		vector<String> paths;
+		paths.push_back("test_pedestrians/*.jpg");
+		paths.push_back("test_vehicles/*.jpg");
+		paths.push_back("test_unknown/*.jpg");
+		createLabelsMat(testLabelsMat, paths);
+	}
 
 	// Predict the testing samples labels with the 3 classifiers
 	vector<Mat> testResponses;
@@ -590,27 +591,31 @@ void computeMES() {
 	Mat finalResponse(votesMatrices.size(), 1, CV_32FC1);
 	calculateFinalResponse(finalResponse, votesMatrices, accuracies);
 
-	// Evaluate the classifier accuracy
-	float count = 0;
-	float accuracy = 0;
-	SVMevaluate(finalResponse, count, accuracy, testLabelsMat);
+	if (ACC_EVALUATION) {
+		// Evaluate the classifier accuracy
+		float count = 0;
+		float accuracy = 0;
+		SVMevaluate(finalResponse, count, accuracy, testLabelsMat);
 
-	// Print the result
-	cout << "The accuracy is " << accuracy << "%" << endl;
+		// Print the result
+		cout << "The accuracy is " << accuracy << "%" << endl;
+	}
 }
 
 void classify() {
-// If MES is not used
+	// If MES is not used
 	if (!USE_MES) {
 		CvSVM svm;
 
 		if (!LOAD_CLASSIFIER) {
 			// Create the matrix of all the feature vectors of training samples and the matrix of all the labels of training samples
 			Mat featureVecMat, labelsMat;
-			createFeatureVectorsMat(featureVecMat, "train_pedestrians/*.jpg",
-					"train_vehicles/*.jpg", "train_unknown/*.jpg", false);
-			createLabelsMat(labelsMat, "train_pedestrians/*.jpg",
-					"train_vehicles/*.jpg", "train_unknown/*.jpg");
+			vector<String> paths;
+			paths.push_back("train_pedestrians/*.jpg");
+			paths.push_back("train_vehicles/*.jpg");
+			paths.push_back("train_unknown/*.jpg");
+			createFeatureVectorsMat(featureVecMat, paths);
+			createLabelsMat(labelsMat, paths);
 			// Train the SVM classifier
 			SVMtrain(svm, featureVecMat, labelsMat);
 		} else {
@@ -621,22 +626,33 @@ void classify() {
 
 		// Create the matrix of all the feature vectors of testing samples and the matrix of all the labels of testing samples
 		Mat testFeatureVecMat, testLabelsMat;
-		createFeatureVectorsMat(testFeatureVecMat, "test_pedestrians/*.jpg",
-				"test_vehicles/*.jpg", "test_unknown/*.jpg", true);
-		createLabelsMat(testLabelsMat, "test_pedestrians/*.jpg",
-				"test_vehicles/*.jpg", "test_unknown/*.jpg");
+		if (ACC_EVALUATION) {
+			vector<String> paths;
+			paths.push_back("test_pedestrians/*.jpg");
+			paths.push_back("test_vehicles/*.jpg");
+			paths.push_back("test_unknown/*.jpg");
+			createFeatureVectorsMat(testFeatureVecMat, paths);
+			createLabelsMat(testLabelsMat, paths);
+		} else {
+			Mat testFeatureVecMat;
+			vector<String> path;
+			path.push_back("video1_bboxes/*.jpg");
+			createFeatureVectorsMat(testFeatureVecMat, path);
+		}
 
 		// Predict the testing samples class with the classifier
 		Mat testResponse;
 		svm.predict(testFeatureVecMat, testResponse);
 
-		// Evaluate the classifier accuracy
-		float count = 0;
-		float accuracy = 0;
-		SVMevaluate(testResponse, count, accuracy, testLabelsMat);
+		if (ACC_EVALUATION) {
+			// Evaluate the classifier accuracy
+			float count = 0;
+			float accuracy = 0;
+			SVMevaluate(testResponse, count, accuracy, testLabelsMat);
 
-		// Print the result
-		cout << "The accuracy is " << accuracy << "%" << endl;
+			// Print the result
+			cout << "The accuracy is " << accuracy << "%" << endl;
+		}
 	} else {
 		// Use MES
 		computeMES();
@@ -645,23 +661,23 @@ void classify() {
 
 void extractSamplesFromVideo(const String pathVideo, const String pathXml,
 		const String pathSave) {
-// Open the video file
+	// Open the video file
 	VideoCapture cap(pathVideo);
 	if (!cap.isOpened()) {
 		cout << "Cannot open the video file" << endl;
 		return;
 	}
 
-// Parse the xml file into doc
+	// Parse the xml file into doc
 	file<> xmlFile(pathXml.c_str());
 	xml_document<> doc;
 	doc.parse<0>(xmlFile.data());
 
-// Read the <sourcefile>...</sourcefile> node
+	// Read the <sourcefile>...</sourcefile> node
 	xml_node<> *sourcefileNode =
 			doc.first_node()->first_node("data")->first_node();
 
-// Iterate through all <object>...</object> nodes
+	// Iterate through all <object>...</object> nodes
 	for (xml_node<> *objNode = sourcefileNode->first_node("object"); objNode;
 			objNode = objNode->next_sibling()) {
 		// Read the 2nd <attribute>...</attribute> node inside <object>...</object>
