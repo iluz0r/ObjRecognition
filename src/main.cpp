@@ -25,7 +25,7 @@ int DESCRIPTOR_TYPE = 1; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
 int LOAD_CLASSIFIER = 1;
 int USE_MES = 0; // If MES is used, DESCRIPTOR_TYPE and LOAD_CLASSIFIER are not considered
 int NUM_CLASS = 3; // Number of classes
-int ACC_EVALUATION = 1; // When this param is 1, the system loads the samples from test_pedestrians,
+int ACC_EVALUATION = 0; // When this param is 1, the system loads the samples from test_pedestrians,
 // test_vehicles and test_unknown folders and give as output the classification accuracy
 
 void convertVectorToMatrix(const vector<vector<float> > &hogResult, Mat &mat) {
@@ -547,7 +547,7 @@ void createConfusionMatrices(vector<Mat> &confusionMatrices,
 	}
 }
 
-void saveOutputAsXml() {
+void saveOutputAsXml(const Mat &testResponse) {
 	//str.erase(0, str.find_first_not_of('0'));
 	xml_document<> doc;
 
@@ -569,9 +569,41 @@ void saveOutputAsXml() {
 	file_stored << doc;
 	file_stored.close();
 	doc.clear();
+
+	vector<String> fileNames;
+	glob("video1_bboxes/*.jpg", fileNames, true);
+	string startPed = "0", endPed = "0";
+	for (int i = 0; i < testResponse.rows; i++) {
+		if (testResponse.at<float>(i, 0) == 1) {
+			stringstream ss1(fileNames[i]);
+			string name;
+			getline(ss1, name, '/');
+			getline(ss1, name, '/');
+			stringstream ss2(name);
+			string frame;
+			getline(ss2, frame, '_');
+			startPed = frame.erase(0, frame.find_first_not_of('0'));
+			break;
+		}
+	}
+	for (int i = testResponse.rows - 1; i >= 0; i--) {
+		if (testResponse.at<float>(i, 0) == 1) {
+			stringstream ss1(fileNames[i]);
+			string name;
+			getline(ss1, name, '/');
+			getline(ss1, name, '/');
+			stringstream ss2(name);
+			string frame;
+			getline(ss2, frame, '_');
+			endPed = frame.erase(0, frame.find_first_not_of('0'));
+			break;
+		}
+	}
+	cout << startPed << " " << endPed << endl;
+
 }
 
-void computeMES() {
+void computeMES(Mat &finalResponse) {
 	// Load the 3 trained classifiers
 	CvSVM svm_hog, svm_lbp, svm_bb;
 	svm_hog.load("svm_0_classifier.xml");
@@ -596,16 +628,6 @@ void computeMES() {
 	vector<vector<float> > accuracies;
 	calculateAccuracies(accuracies, confusionMatrices);
 
-	Mat testLabelsMat;
-	if (ACC_EVALUATION) {
-		// Create the matrix containing all the labels for the test samples
-		vector<String> paths;
-		paths.push_back("test_pedestrians/*.jpg");
-		paths.push_back("test_vehicles/*.jpg");
-		paths.push_back("test_unknown/*.jpg");
-		createLabelsMat(testLabelsMat, paths);
-	}
-
 	// Predict the testing samples labels with the 3 classifiers
 	vector<Mat> testResponses;
 	calculateTestResponses(testResponses, svm_hog, svm_lbp, svm_bb);
@@ -616,20 +638,8 @@ void computeMES() {
 	createVotesMatrices(votesMatrices, testResponses);
 
 	// Calculate the best classes for each sample based on reliability of MES for each class (psi(0), psi(1) and psi(2); I choose 0,1 or 2 by argmax(psi(i)) on i)
-	Mat finalResponse(votesMatrices.size(), 1, CV_32FC1);
+	finalResponse = Mat(votesMatrices.size(), 1, CV_32FC1);
 	calculateFinalResponse(finalResponse, votesMatrices, accuracies);
-
-	if (ACC_EVALUATION) {
-		// Evaluate the classifier accuracy
-		float count = 0;
-		float accuracy = 0;
-		SVMevaluate(finalResponse, count, accuracy, testLabelsMat);
-
-		// Print the result
-		cout << "The accuracy is " << accuracy << "%" << endl;
-	} else {
-		//saveOutputAsXml();
-	}
 }
 
 void classify() {
@@ -664,7 +674,6 @@ void classify() {
 			createFeatureVectorsMat(testFeatureVecMat, paths);
 			createLabelsMat(testLabelsMat, paths);
 		} else {
-			Mat testFeatureVecMat;
 			vector<String> path;
 			path.push_back("video1_bboxes/*.jpg");
 			createFeatureVectorsMat(testFeatureVecMat, path);
@@ -683,11 +692,32 @@ void classify() {
 			// Print the result
 			cout << "The accuracy is " << accuracy << "%" << endl;
 		} else {
-			//saveOutputAsXml();
+			saveOutputAsXml(testResponse);
 		}
 	} else {
 		// Use MES
-		computeMES();
+		Mat finalResponse;
+		computeMES(finalResponse);
+
+		if (ACC_EVALUATION) {
+			// Create the matrix containing all the labels for the test samples
+			Mat testLabelsMat;
+			vector<String> paths;
+			paths.push_back("test_pedestrians/*.jpg");
+			paths.push_back("test_vehicles/*.jpg");
+			paths.push_back("test_unknown/*.jpg");
+			createLabelsMat(testLabelsMat, paths);
+
+			// Evaluate the classifier accuracy
+			float count = 0;
+			float accuracy = 0;
+			SVMevaluate(finalResponse, count, accuracy, testLabelsMat);
+
+			// Print the result
+			cout << "The accuracy is " << accuracy << "%" << endl;
+		} else {
+			saveOutputAsXml(finalResponse);
+		}
 	}
 }
 
@@ -757,8 +787,8 @@ void extractSamplesFromVideo(const String pathVideo, const String pathXml,
 				s << setw(4) << setfill('0') << frame; // 0000, 0001, 0002, etc...
 				string numFrame = s.str();
 				stringstream st;
-				st << pathSave << numFrame << "_" << x << "_" << y << "_" << width
-						<< "_" << height << ".jpg";
+				st << pathSave << numFrame << "_" << x << "_" << y << "_"
+						<< width << "_" << height << ".jpg";
 				imwrite(st.str(), cropImage);
 			}
 		}
@@ -767,8 +797,7 @@ void extractSamplesFromVideo(const String pathVideo, const String pathXml,
 
 int main(int argc, char** argv) {
 	//extractSamplesFromVideo("prova.mp4", "prova.xgtf", "prova/");
-	//classify();
-	saveOutputAsXml();
+	classify();
 	return (0);
 }
 
