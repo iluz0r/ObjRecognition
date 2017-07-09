@@ -548,59 +548,66 @@ void createConfusionMatrices(vector<Mat> &confusionMatrices,
 }
 
 void saveOutputAsXml(const Mat &testResponse) {
-	//str.erase(0, str.find_first_not_of('0'));
-	xml_document<> doc;
+	/*
+	 xml_document<> doc;
 
-	xml_node<>* decl = doc.allocate_node(node_declaration);
-	decl->append_attribute(doc.allocate_attribute("version", "1.0"));
-	decl->append_attribute(doc.allocate_attribute("encoding", "utf-8"));
-	doc.append_node(decl);
+	 xml_node<>* decl = doc.allocate_node(node_declaration);
+	 decl->append_attribute(doc.allocate_attribute("version", "1.0"));
+	 decl->append_attribute(doc.allocate_attribute("encoding", "utf-8"));
+	 doc.append_node(decl);
 
-	xml_node<>* root = doc.allocate_node(node_element, "rootnode");
-	root->append_attribute(doc.allocate_attribute("version", "1.0"));
-	root->append_attribute(doc.allocate_attribute("type", "example"));
-	doc.append_node(root);
+	 xml_node<>* root = doc.allocate_node(node_element, "rootnode");
+	 root->append_attribute(doc.allocate_attribute("version", "1.0"));
+	 root->append_attribute(doc.allocate_attribute("type", "example"));
+	 doc.append_node(root);
 
-	xml_node<>* child = doc.allocate_node(node_element, "childnode");
-	root->append_node(child);
+	 xml_node<>* child = doc.allocate_node(node_element, "childnode");
+	 root->append_node(child);
 
-	// Save to file
-	ofstream file_stored("file_stored.xml");
-	file_stored << doc;
-	file_stored.close();
-	doc.clear();
+	 // Save to file
+	 ofstream file_stored("file_stored.xml");
+	 file_stored << doc;
+	 file_stored.close();
+	 doc.clear();*/
 
 	vector<String> fileNames;
 	glob("video1_bboxes/*.jpg", fileNames, true);
-	string startPed = "0", endPed = "0";
-	for (int i = 0; i < testResponse.rows; i++) {
-		if (testResponse.at<float>(i, 0) == 1) {
-			stringstream ss1(fileNames[i]);
-			string name;
-			getline(ss1, name, '/');
-			getline(ss1, name, '/');
-			stringstream ss2(name);
-			string frame;
-			getline(ss2, frame, '_');
-			startPed = frame.erase(0, frame.find_first_not_of('0'));
-			break;
-		}
-	}
-	for (int i = testResponse.rows - 1; i >= 0; i--) {
-		if (testResponse.at<float>(i, 0) == 1) {
-			stringstream ss1(fileNames[i]);
-			string name;
-			getline(ss1, name, '/');
-			getline(ss1, name, '/');
-			stringstream ss2(name);
-			string frame;
-			getline(ss2, frame, '_');
-			endPed = frame.erase(0, frame.find_first_not_of('0'));
-			break;
-		}
-	}
-	cout << startPed << " " << endPed << endl;
+	vector<String> startFrames(NUM_CLASS);
+	vector<String> endFrames(NUM_CLASS);
 
+	for (int j = 0; j < NUM_CLASS; j++) {
+		for (int i = 0; i < testResponse.rows; i++) {
+			if (testResponse.at<float>(i, 0) == j) {
+				stringstream ss1(fileNames[i]);
+				string name;
+				getline(ss1, name, '/');
+				getline(ss1, name, '/');
+				stringstream ss2(name);
+				string frame;
+				getline(ss2, frame, '_');
+				startFrames[j] = frame.erase(0, frame.find_first_not_of('0'));
+				break;
+			}
+		}
+	}
+
+	for (int j = 0; j < NUM_CLASS; j++) {
+		for (int i = testResponse.rows-1; i >= 0; i--) {
+			if (testResponse.at<float>(i, 0) == j) {
+				stringstream ss1(fileNames[i]);
+				string name;
+				getline(ss1, name, '/');
+				getline(ss1, name, '/');
+				stringstream ss2(name);
+				string frame;
+				getline(ss2, frame, '_');
+				endFrames[j] = frame.erase(0, frame.find_first_not_of('0'));
+				break;
+			}
+		}
+	}
+	cout << startFrames[0] << " " << startFrames[1] << " " << startFrames[2] << endl;
+	cout << endFrames[0] << " " << endFrames[1] << " " << endFrames[2] << endl;
 }
 
 void computeMES(Mat &finalResponse) {
