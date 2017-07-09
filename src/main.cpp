@@ -15,6 +15,7 @@
 
 #include <rapidxml.hpp>
 #include <rapidxml_utils.hpp>
+#include <rapidxml_print.hpp>
 
 using namespace cv;
 using namespace std;
@@ -547,7 +548,27 @@ void createConfusionMatrices(vector<Mat> &confusionMatrices,
 }
 
 void saveOutputAsXml() {
+	//str.erase(0, str.find_first_not_of('0'));
+	xml_document<> doc;
 
+	xml_node<>* decl = doc.allocate_node(node_declaration);
+	decl->append_attribute(doc.allocate_attribute("version", "1.0"));
+	decl->append_attribute(doc.allocate_attribute("encoding", "utf-8"));
+	doc.append_node(decl);
+
+	xml_node<>* root = doc.allocate_node(node_element, "rootnode");
+	root->append_attribute(doc.allocate_attribute("version", "1.0"));
+	root->append_attribute(doc.allocate_attribute("type", "example"));
+	doc.append_node(root);
+
+	xml_node<>* child = doc.allocate_node(node_element, "childnode");
+	root->append_node(child);
+
+	// Save to file
+	ofstream file_stored("file_stored.xml");
+	file_stored << doc;
+	file_stored.close();
+	doc.clear();
 }
 
 void computeMES() {
@@ -746,7 +767,8 @@ void extractSamplesFromVideo(const String pathVideo, const String pathXml,
 
 int main(int argc, char** argv) {
 	//extractSamplesFromVideo("prova.mp4", "prova.xgtf", "prova/");
-	classify();
+	//classify();
+	saveOutputAsXml();
 	return (0);
 }
 
