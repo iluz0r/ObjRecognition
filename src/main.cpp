@@ -11,6 +11,7 @@
 #include <opencv2/ml/ml.hpp>
 
 #include <iostream>
+#include <iomanip>
 
 #include <rapidxml.hpp>
 #include <rapidxml_utils.hpp>
@@ -19,9 +20,9 @@ using namespace cv;
 using namespace std;
 using namespace rapidxml;
 
-int DESCRIPTOR_TYPE = 0; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
+int DESCRIPTOR_TYPE = 1; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
 int LOAD_CLASSIFIER = 1;
-int USE_MES = 1; // If MES is used, DESCRIPTOR_TYPE and LOAD_CLASSIFIER are not considered
+int USE_MES = 0; // If MES is used, DESCRIPTOR_TYPE and LOAD_CLASSIFIER are not considered
 int NUM_CLASS = 3; // Number of classes
 int ACC_EVALUATION = 1; // When this param is 1, the system loads the samples from test_pedestrians,
 // test_vehicles and test_unknown folders and give as output the classification accuracy
@@ -176,7 +177,7 @@ void computeLBP(Mat &featureVecMat, const vector<Mat> &img) {
 		//OLBP(img[i], lbp);
 		normalize(lbp, lbp, 0, 255, NORM_MINMAX, CV_8UC1);
 		Mat hist;
-		histogram(lbp, hist, 256); // 256 is the number of bins of the histogram. It changes with the neighbors
+		histogram(lbp, hist, 256); // 256 is the number of bins of the histogram
 		lbpResult.push_back(hist);
 	}
 
@@ -347,7 +348,7 @@ void loadLabels(vector<int> &labels, int pedNum, int vehNum, int unkNum) {
 	}
 }
 
-void loadImages(vector<Mat> &images, vector<String> paths) {
+void loadImages(vector<Mat> &images, const vector<String> paths) {
 	for (unsigned int i = 0; i < paths.size(); i++) {
 		vector<String> fileNames;
 		glob(paths[i], fileNames, true);
@@ -406,6 +407,8 @@ void createFeatureVectorsMat(Mat &featureVecMat, vector<String> paths) {
 		break;
 	}
 }
+
+// void createFeatureVector(Mat &featureVector, const Mat &img)
 
 void calculateFinalResponse(Mat &finalResponse,
 		const vector<Mat> &votesMatrices,
@@ -543,6 +546,10 @@ void createConfusionMatrices(vector<Mat> &confusionMatrices,
 	}
 }
 
+void saveOutputAsXml() {
+
+}
+
 void computeMES() {
 	// Load the 3 trained classifiers
 	CvSVM svm_hog, svm_lbp, svm_bb;
@@ -599,6 +606,8 @@ void computeMES() {
 
 		// Print the result
 		cout << "The accuracy is " << accuracy << "%" << endl;
+	} else {
+		//saveOutputAsXml();
 	}
 }
 
@@ -652,12 +661,16 @@ void classify() {
 
 			// Print the result
 			cout << "The accuracy is " << accuracy << "%" << endl;
+		} else {
+			//saveOutputAsXml();
 		}
 	} else {
 		// Use MES
 		computeMES();
 	}
 }
+
+// void classifyFromXml(const String pathVideo, const String pathXml)
 
 void extractSamplesFromVideo(const String pathVideo, const String pathXml,
 		const String pathSave) {
@@ -719,8 +732,11 @@ void extractSamplesFromVideo(const String pathVideo, const String pathXml,
 				Mat cropImage = frameImg(roi);
 
 				// Save the bbox crop as jpeg file
+				stringstream s;
+				s << setw(4) << setfill('0') << frame; // 0000, 0001, 0002, etc...
+				string numFrame = s.str();
 				stringstream st;
-				st << pathSave << frame << "_" << x << "_" << y << "_" << width
+				st << pathSave << numFrame << "_" << x << "_" << y << "_" << width
 						<< "_" << height << ".jpg";
 				imwrite(st.str(), cropImage);
 			}
