@@ -547,12 +547,27 @@ void createConfusionMatrices(vector<Mat> &confusionMatrices,
 	}
 }
 
-void saveOutputAsXml(const Mat &testResponse) {
-	vector<String> fileNames;
-	glob("video1_bboxes/*.jpg", fileNames, true);
-	vector<String> startFrames(NUM_CLASS);
-	vector<String> endFrames(NUM_CLASS);
+void calculateEndFrames(vector<String> &endFrames, const Mat &testResponse,
+		const vector<String> &fileNames) {
+	for (int j = 0; j < NUM_CLASS; j++) {
+		for (int i = testResponse.rows - 1; i >= 0; i--) {
+			if (testResponse.at<float>(i, 0) == j) {
+				stringstream ss1(fileNames[i]);
+				string name;
+				getline(ss1, name, '/');
+				getline(ss1, name, '/');
+				stringstream ss2(name);
+				string frame;
+				getline(ss2, frame, '_');
+				endFrames[j] = frame.erase(0, frame.find_first_not_of('0'));
+				break;
+			}
+		}
+	}
+}
 
+void calculateStartFrames(vector<String> &startFrames, const Mat &testResponse,
+		const vector<String> &fileNames) {
 	for (int j = 0; j < NUM_CLASS; j++) {
 		for (int i = 0; i < testResponse.rows; i++) {
 			if (testResponse.at<float>(i, 0) == j) {
@@ -569,25 +584,22 @@ void saveOutputAsXml(const Mat &testResponse) {
 			}
 		}
 	}
+}
 
-	for (int j = 0; j < NUM_CLASS; j++) {
-		for (int i = testResponse.rows - 1; i >= 0; i--) {
-			if (testResponse.at<float>(i, 0) == j) {
-				stringstream ss1(fileNames[i]);
-				string name;
-				getline(ss1, name, '/');
-				getline(ss1, name, '/');
-				stringstream ss2(name);
-				string frame;
-				getline(ss2, frame, '_');
-				endFrames[j] = frame.erase(0, frame.find_first_not_of('0'));
-				break;
-			}
-		}
-	}
+void saveOutputAsXml(const Mat &testResponse) {
+	vector<String> fileNames;
+	glob("video1_bboxes/*.jpg", fileNames, true);
 
+	// Calculate the startFrame for each class
+	vector<String> startFrames(NUM_CLASS);
+	calculateStartFrames(startFrames, testResponse, fileNames);
+
+	// Calculate the endFrame for each class
+	vector<String> endFrames(NUM_CLASS);
+	calculateEndFrames(endFrames, testResponse, fileNames);
+
+	// Crea the xml document
 	xml_document<> doc;
-
 	xml_node<>* declNode = doc.allocate_node(node_declaration);
 	declNode->append_attribute(doc.allocate_attribute("version", "1.0"));
 	declNode->append_attribute(doc.allocate_attribute("encoding", "utf-8"));
@@ -617,9 +629,8 @@ void saveOutputAsXml(const Mat &testResponse) {
 		else if (i == 2)
 			objNode->append_attribute(
 					doc.allocate_attribute("name", "Unknown"));
-		doc.append_node(objNode);
 
-		// Create the first node <attribute..</attribute>
+		// Create the first <attribute..</attribute> node
 		xml_node<>* attrNode1 = doc.allocate_node(node_element, "attribute");
 		attrNode1->append_attribute(doc.allocate_attribute("name", "Name"));
 		xml_node<>* dataSNode = doc.allocate_node(node_element, "data:svalue");
@@ -635,25 +646,23 @@ void saveOutputAsXml(const Mat &testResponse) {
 		attrNode1->append_node(dataSNode);
 		objNode->append_node(attrNode1);
 
-		// Create the second node <attribute..</attribute>
+		// Create the second <attribute..</attribute> node
 		xml_node<>* attrNode2 = doc.allocate_node(node_element, "attribute");
 		attrNode2->append_attribute(doc.allocate_attribute("name", "Location"));
-		objNode->append_node(attrNode2);
-	}
 
-	// Create the <data:bbox>..</> nodes inside second <attribute>..</attribute> node
-	for (int j = 0; j < testResponse.rows; j++) {
-		stringstream ss;
-		ss << testResponse.at<float>(j, 0);
-		String label = ss.str();
-		// Iterate through all <object>...</object> nodes and search the <object> node with id = label
-		for (xml_node<> *node = doc.first_node("object"); node;
-				node = node->next_sibling()) {
-			String id = node->first_attribute("id")->value();
-			// If the label == id it creates the <data:bbox></data:bbox> node and add it to <object>..</object>
+		// Create the <data:bbox>..</> nodes inside second <attribute>..</attribute> node
+		for (int j = 0; j < testResponse.rows; j++) {
+			stringstream ss;
+			ss << testResponse.at<float>(j, 0);
+			String label = ss.str();
+
+			String id = objNode->first_attribute("id")->value();
+			// If the label == id it creates the <data:bbox></data:bbox> node and add it to <attribute>..</attribute>
 			if (label == id) {
 				xml_node<>* dataBBNode = doc.allocate_node(node_element,
 						"data:bbox");
+
+				// Creates a string for each <data:bbox>..</> attribute value
 				stringstream ss(fileNames[j]);
 				string name;
 				getline(ss, name, '/');
@@ -671,6 +680,8 @@ void saveOutputAsXml(const Mat &testResponse) {
 				stringstream ss3;
 				frame = frame.erase(0, frame.find_first_not_of('0'));
 				ss3 << frame << ":" << frame;
+
+				// Appends the attributes to the <data:bbox>..</> node
 				dataBBNode->append_attribute(
 						doc.allocate_attribute("framespan",
 								doc.allocate_string(ss3.str().c_str())));
@@ -694,9 +705,13 @@ void saveOutputAsXml(const Mat &testResponse) {
 				dataBBNode->append_attribute(
 						doc.allocate_attribute("y",
 								doc.allocate_string(ss3.str().c_str())));
-				node->append_node(dataBBNode);
+
+				// Appends <data:bbox>..</data:bbox> node to the second <attribute>..</attribute> node
+				attrNode2->append_node(dataBBNode);
 			}
 		}
+		objNode->append_node(attrNode2);
+		doc.append_node(objNode);
 	}
 
 	// Save to file
