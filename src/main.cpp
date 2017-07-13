@@ -548,28 +548,6 @@ void createConfusionMatrices(vector<Mat> &confusionMatrices,
 }
 
 void saveOutputAsXml(const Mat &testResponse) {
-	/*
-	 xml_document<> doc;
-
-	 xml_node<>* decl = doc.allocate_node(node_declaration);
-	 decl->append_attribute(doc.allocate_attribute("version", "1.0"));
-	 decl->append_attribute(doc.allocate_attribute("encoding", "utf-8"));
-	 doc.append_node(decl);
-
-	 xml_node<>* root = doc.allocate_node(node_element, "rootnode");
-	 root->append_attribute(doc.allocate_attribute("version", "1.0"));
-	 root->append_attribute(doc.allocate_attribute("type", "example"));
-	 doc.append_node(root);
-
-	 xml_node<>* child = doc.allocate_node(node_element, "childnode");
-	 root->append_node(child);
-
-	 // Save to file
-	 ofstream file_stored("file_stored.xml");
-	 file_stored << doc;
-	 file_stored.close();
-	 doc.clear();*/
-
 	vector<String> fileNames;
 	glob("video1_bboxes/*.jpg", fileNames, true);
 	vector<String> startFrames(NUM_CLASS);
@@ -585,6 +563,7 @@ void saveOutputAsXml(const Mat &testResponse) {
 				stringstream ss2(name);
 				string frame;
 				getline(ss2, frame, '_');
+				// Delete from 0 to the index of the first character != 0
 				startFrames[j] = frame.erase(0, frame.find_first_not_of('0'));
 				break;
 			}
@@ -592,7 +571,7 @@ void saveOutputAsXml(const Mat &testResponse) {
 	}
 
 	for (int j = 0; j < NUM_CLASS; j++) {
-		for (int i = testResponse.rows-1; i >= 0; i--) {
+		for (int i = testResponse.rows - 1; i >= 0; i--) {
 			if (testResponse.at<float>(i, 0) == j) {
 				stringstream ss1(fileNames[i]);
 				string name;
@@ -606,8 +585,83 @@ void saveOutputAsXml(const Mat &testResponse) {
 			}
 		}
 	}
-	cout << startFrames[0] << " " << startFrames[1] << " " << startFrames[2] << endl;
-	cout << endFrames[0] << " " << endFrames[1] << " " << endFrames[2] << endl;
+
+	xml_document<> doc;
+
+	xml_node<>* declNode = doc.allocate_node(node_declaration);
+	declNode->append_attribute(doc.allocate_attribute("version", "1.0"));
+	declNode->append_attribute(doc.allocate_attribute("encoding", "utf-8"));
+	doc.append_node(declNode);
+
+	for (int i = 0; i < NUM_CLASS; i++) {
+		// Create <object../object> node
+		xml_node<>* objNode = doc.allocate_node(node_element, "object");
+		String startFrame = startFrames[i];
+		String endFrame = endFrames[i];
+		stringstream ss;
+		ss << startFrame << ":" << endFrame;
+		char *framespanAttr = doc.allocate_string(ss.str().c_str());
+		objNode->append_attribute(
+				doc.allocate_attribute("framespan", framespanAttr));
+		stringstream ss2;
+		ss2 << i;
+		char *idAttr = doc.allocate_string(ss2.str().c_str());
+		objNode->append_attribute(doc.allocate_attribute("id", idAttr));
+
+		if (i == 0)
+			objNode->append_attribute(
+					doc.allocate_attribute("name", "Pedestrian"));
+		else if (i == 1)
+			objNode->append_attribute(
+					doc.allocate_attribute("name", "Vehicle"));
+		else if (i == 2)
+			objNode->append_attribute(
+					doc.allocate_attribute("name", "Unknown"));
+		doc.append_node(objNode);
+
+		// Create the first node <attribute..</attribute>
+		xml_node<>* attrNode1 = doc.allocate_node(node_element, "attribute");
+		attrNode1->append_attribute(doc.allocate_attribute("name", "Name"));
+		xml_node<>* dataSNode = doc.allocate_node(node_element, "data:svalue");
+		if (i == 0)
+			dataSNode->append_attribute(
+					doc.allocate_attribute("value", "Pedestrian"));
+		else if (i == 1)
+			dataSNode->append_attribute(
+					doc.allocate_attribute("value", "Vehicle"));
+		else if (i == 2)
+			dataSNode->append_attribute(
+					doc.allocate_attribute("value", "Unknown"));
+		attrNode1->append_node(dataSNode);
+		objNode->append_node(attrNode1);
+
+		// Create the second node <attribute..</attribute>
+		xml_node<>* attrNode2 = doc.allocate_node(node_element, "attribute");
+		attrNode2->append_attribute(doc.allocate_attribute("name", "Location"));
+		objNode->append_node(attrNode2);
+	}
+
+	// Create the <data:bbox>..</> nodes inside second <attribute>..</attribute> node
+	for (int j = 0; j < testResponse.rows; j++) {
+		stringstream ss;
+		ss << testResponse.at<float>(j, 0);
+		String label = ss.str();
+		// Iterate through all <object>...</object> nodes and search the <object> node with id = label
+		for (xml_node<> *node = doc.first_node("object"); node;
+				node = node->next_sibling()) {
+			String id = node->first_attribute("id")->value();
+			if(label == id) {
+				xml_node<>* dataBBNode = doc.allocate_node(node_element, "data:bbox");
+				dataBBNode->append_attribute(doc.allocate_attribute("framespan",""));
+			}
+		}
+	}
+
+	// Save to file
+	ofstream file_stored("classification_video1.xml");
+	file_stored << doc;
+	file_stored.close();
+	doc.clear();
 }
 
 void computeMES(Mat &finalResponse) {

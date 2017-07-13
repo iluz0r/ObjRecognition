@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<object framespan="1:2003" id="0" name="Pedestrian">
+	<attribute name="Name">
+		<data:svalue value="Pedestrian"/>
+	</attribute>
+	<attribute name="Location"/>
+</object>
+<object framespan="351:2005" id="1" name="Vehicle">
+	<attribute name="Name">
+		<data:svalue value="Vehicle"/>
+	</attribute>
+	<attribute name="Location"/>
+</object>
+<object framespan="1604:1754" id="2" name="Unknown">
+	<attribute name="Name">
+		<data:svalue value="Unknown"/>
+	</attribute>
+	<attribute name="Location"/>
+</object>
+
