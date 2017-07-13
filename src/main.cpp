@@ -650,9 +650,51 @@ void saveOutputAsXml(const Mat &testResponse) {
 		for (xml_node<> *node = doc.first_node("object"); node;
 				node = node->next_sibling()) {
 			String id = node->first_attribute("id")->value();
-			if(label == id) {
-				xml_node<>* dataBBNode = doc.allocate_node(node_element, "data:bbox");
-				dataBBNode->append_attribute(doc.allocate_attribute("framespan",""));
+			// If the label == id it creates the <data:bbox></data:bbox> node and add it to <object>..</object>
+			if (label == id) {
+				xml_node<>* dataBBNode = doc.allocate_node(node_element,
+						"data:bbox");
+				stringstream ss(fileNames[j]);
+				string name;
+				getline(ss, name, '/');
+				getline(ss, name, '/');
+				stringstream ss1(name);
+				string frame, x, y, width, height;
+				getline(ss1, frame, '_');
+				getline(ss1, x, '_');
+				getline(ss1, y, '_');
+				getline(ss1, width, '_');
+				getline(ss1, height, '_');
+				stringstream ss2;
+				ss2 << height;
+				getline(ss2, height, '.');
+				stringstream ss3;
+				frame = frame.erase(0, frame.find_first_not_of('0'));
+				ss3 << frame << ":" << frame;
+				dataBBNode->append_attribute(
+						doc.allocate_attribute("framespan",
+								doc.allocate_string(ss3.str().c_str())));
+				ss3.str("");
+				ss3 << height;
+				dataBBNode->append_attribute(
+						doc.allocate_attribute("height",
+								doc.allocate_string(ss3.str().c_str())));
+				ss3.str("");
+				ss3 << width;
+				dataBBNode->append_attribute(
+						doc.allocate_attribute("width",
+								doc.allocate_string(ss3.str().c_str())));
+				ss3.str("");
+				ss3 << x;
+				dataBBNode->append_attribute(
+						doc.allocate_attribute("x",
+								doc.allocate_string(ss3.str().c_str())));
+				ss3.str("");
+				ss3 << y;
+				dataBBNode->append_attribute(
+						doc.allocate_attribute("y",
+								doc.allocate_string(ss3.str().c_str())));
+				node->append_node(dataBBNode);
 			}
 		}
 	}
