@@ -250,26 +250,26 @@ void computeBB(Mat &featureVecMat, const vector<Mat> &img) {
 		colors.push_back(white);
 
 		int maxWhitePixels = 0;
-		Mat bestMask;
+		Mat bestThresh;
 		for (unsigned int j = 0; j < colors.size(); j++) {
 			// Threshold the HSV image to get only background of this color
-			Mat mask;
-			inRange(hsvImg, colors[j].at(0), colors[j].at(1), mask);
+			Mat colThresh;
+			inRange(hsvImg, colors[j].at(0), colors[j].at(1), colThresh);
 
 			int whitePixels;
-			countWhitePixels(mask, whitePixels);
+			countWhitePixels(colThresh, whitePixels);
 			if (whitePixels > maxWhitePixels) {
 				maxWhitePixels = whitePixels;
-				bestMask = mask;
+				bestThresh = colThresh;
 			}
 		}
 
 		// Invert the mask to get the object of interest
-		bitwise_not(bestMask, bestMask);
+		bitwise_not(bestThresh, bestThresh);
 
 		// Bitwise-AND mask and original image
 		Mat res;
-		bitwise_and(im, im, res, bestMask);
+		bitwise_and(im, im, res, bestThresh);
 
 		// Detect edges using Canny
 		Mat canny_mat;
