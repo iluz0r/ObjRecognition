@@ -21,9 +21,9 @@ using namespace cv;
 using namespace std;
 using namespace rapidxml;
 
-int DESCRIPTOR_TYPE = 1; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
+int DESCRIPTOR_TYPE = 3; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
 int LOAD_CLASSIFIER = 1;
-int USE_MES = 0; // If MES is used, DESCRIPTOR_TYPE and LOAD_CLASSIFIER are not considered
+int USE_MES = 1; // If MES is used, DESCRIPTOR_TYPE and LOAD_CLASSIFIER are not considered
 int NUM_CLASS = 3; // Number of classes
 int ACC_EVALUATION = 0; // When this param is 1, the system loads the samples from test_pedestrians,
 // test_vehicles and test_unknown folders and give as output the classification accuracy
@@ -461,7 +461,7 @@ void calculateTestResponses(vector<Mat> &testResponses, const CvSVM &svm_hog,
 			createFeatureVectorsMat(testFeatureVecMat, paths);
 		} else {
 			vector<String> path;
-			path.push_back("video1_bboxes/*.jpg");
+			path.push_back("video3_bboxes/*.jpg");
 			createFeatureVectorsMat(testFeatureVecMat, path);
 		}
 
@@ -588,7 +588,7 @@ void calculateStartFrames(vector<String> &startFrames, const Mat &testResponse,
 
 void saveOutputAsXml(const Mat &testResponse) {
 	vector<String> fileNames;
-	glob("video1_bboxes/*.jpg", fileNames, true);
+	glob("video3_bboxes/*.jpg", fileNames, true);
 
 	// Calculate the startFrame for each class
 	vector<String> startFrames(NUM_CLASS);
@@ -612,13 +612,11 @@ void saveOutputAsXml(const Mat &testResponse) {
 		String endFrame = endFrames[i];
 		stringstream ss;
 		ss << startFrame << ":" << endFrame;
-		char *framespanAttr = doc.allocate_string(ss.str().c_str());
 		objNode->append_attribute(
-				doc.allocate_attribute("framespan", framespanAttr));
+				doc.allocate_attribute("framespan", doc.allocate_string(ss.str().c_str())));
 		stringstream ss2;
 		ss2 << i;
-		char *idAttr = doc.allocate_string(ss2.str().c_str());
-		objNode->append_attribute(doc.allocate_attribute("id", idAttr));
+		objNode->append_attribute(doc.allocate_attribute("id", doc.allocate_string(ss2.str().c_str())));
 
 		if (i == 0)
 			objNode->append_attribute(
@@ -715,7 +713,7 @@ void saveOutputAsXml(const Mat &testResponse) {
 	}
 
 	// Save to file
-	ofstream file_stored("classification_video1.xml");
+	ofstream file_stored("Video3_Classification/svm_mes.xml");
 	file_stored << doc;
 	file_stored.close();
 	doc.clear();
@@ -793,7 +791,7 @@ void classify() {
 			createLabelsMat(testLabelsMat, paths);
 		} else {
 			vector<String> path;
-			path.push_back("video1_bboxes/*.jpg");
+			path.push_back("video3_bboxes/*.jpg");
 			createFeatureVectorsMat(testFeatureVecMat, path);
 		}
 
