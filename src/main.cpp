@@ -812,6 +812,10 @@ void createConfusionMatrices(vector<Mat> &confusionMatrices,
 }
 
 void saveOutputAsXml(const String inputPath) {
+	vector<String> fileNames;
+	glob(inputPath, fileNames, true);
+
+	// Load all the images
 	vector<Mat> images;
 	vector<String> path;
 	path.push_back(inputPath);
@@ -824,6 +828,7 @@ void saveOutputAsXml(const String inputPath) {
 	svm_bb.load("svm_2_classifier.xml");
 	svm_concat.load("svm_3_classifier.xml");
 
+	// Init MES params if MES has been choosed
 	vector<vector<float> > accuracies;
 	if (USE_MES) {
 		initMES(accuracies, svm_hog, svm_lbp, svm_bb);
@@ -837,6 +842,7 @@ void saveOutputAsXml(const String inputPath) {
 	doc.append_node(declNode);
 
 	for (unsigned int i = 0; i < images.size(); i++) {
+		float label;
 		if (!USE_MES) {
 			switch (DESCRIPTOR_TYPE) {
 			case 0: {
@@ -844,13 +850,13 @@ void saveOutputAsXml(const String inputPath) {
 				computeSingleHOG(featureVec, images[i]);
 				Mat featureVectorMat(1, featureVec.size(), CV_32FC1,
 						featureVec.data());
-				float label = svm_hog.predict(featureVectorMat);
+				label = svm_hog.predict(featureVectorMat);
 			}
 				break;
 			case 1: {
 				Mat featureVec;
 				computeSingleLBP(featureVec, images[i]);
-				float label = svm_lbp.predict(featureVec);
+				label = svm_lbp.predict(featureVec);
 			}
 				break;
 			case 2: {
@@ -858,155 +864,101 @@ void saveOutputAsXml(const String inputPath) {
 				computeSingleBB(featureVec, images[i]);
 				Mat featureVectorMat(1, featureVec.size(), CV_32FC1,
 						featureVec.data());
-				float label = svm_bb.predict(featureVectorMat);
+				label = svm_bb.predict(featureVectorMat);
 			}
 				break;
 			case 3: {
 				Mat featureVecMat;
 				singleConcatFeatureVec(featureVecMat, images[i]);
-				float label = svm_concat.predict(featureVecMat);
+				label = svm_concat.predict(featureVecMat);
 			}
 				break;
 			}
 		} else {
-			float label;
 			computeSingleMES(label, images[i], accuracies, svm_hog, svm_lbp,
 					svm_bb);
-			cout << label << endl;
 		}
+
+		string sampleClass;
+		if (label == 0)
+			sampleClass = "Pedestrian";
+		else if (label == 1)
+			sampleClass = "Vehicle";
+		else if (label == 2)
+			sampleClass = "Unknown";
+
+		xml_node<>* dataBBNode = doc.allocate_node(node_element, "data:bbox");
+
+		// Creates a string for each <data:bbox>..</> attribute value
+		stringstream ss(fileNames[i]);
+		string name;
+		getline(ss, name, '/');
+		getline(ss, name, '/');
+		stringstream ss1(name);
+		string frame, x, y, width, height;
+		getline(ss1, frame, '_');
+		getline(ss1, x, '_');
+		getline(ss1, y, '_');
+		getline(ss1, width, '_');
+		getline(ss1, height, '_');
+		stringstream ss2;
+		ss2 << height;
+		getline(ss2, height, '.');
+		stringstream ss3;
+		frame = frame.erase(0, frame.find_first_not_of('0'));
+		ss3 << frame << ":" << frame;
+
+		// Appends the attributes to the <data:bbox>..</> node
+		dataBBNode->append_attribute(
+				doc.allocate_attribute("framespan",
+						doc.allocate_string(ss3.str().c_str())));
+		ss3.str("");
+		ss3 << height;
+		dataBBNode->append_attribute(
+				doc.allocate_attribute("height",
+						doc.allocate_string(ss3.str().c_str())));
+		ss3.str("");
+		ss3 << width;
+		dataBBNode->append_attribute(
+				doc.allocate_attribute("width",
+						doc.allocate_string(ss3.str().c_str())));
+		ss3.str("");
+		ss3 << x;
+		dataBBNode->append_attribute(
+				doc.allocate_attribute("x",
+						doc.allocate_string(ss3.str().c_str())));
+		ss3.str("");
+		ss3 << y;
+		dataBBNode->append_attribute(
+				doc.allocate_attribute("y",
+						doc.allocate_string(ss3.str().c_str())));
+
+		dataBBNode->append_attribute(
+				doc.allocate_attribute("class",
+						doc.allocate_string(sampleClass.c_str())));
+		doc.append_node(dataBBNode);
 	}
 
-	/*
-
-	 for (int i = 0; i < NUM_CLASS; i++) {
-	 // Create <object../object> node
-	 xml_node<>* objNode = doc.allocate_node(node_element, "object");
-	 stringstream ss;
-	 ss << startFrame << ":" << endFrame;
-	 objNode->append_attribute(
-	 doc.allocate_attribute("framespan",
-	 doc.allocate_string(ss.str().c_str())));
-	 stringstream ss2;
-	 ss2 << i;
-	 objNode->append_attribute(
-	 doc.allocate_attribute("id",
-	 doc.allocate_string(ss2.str().c_str())));
-
-	 if (i == 0)
-	 objNode->append_attribute(
-	 doc.allocate_attribute("name", "Pedestrian"));
-	 else if (i == 1)
-	 objNode->append_attribute(
-	 doc.allocate_attribute("name", "Vehicle"));
-	 else if (i == 2)
-	 objNode->append_attribute(
-	 doc.allocate_attribute("name", "Unknown"));
-
-	 // Create the first <attribute..</attribute> node
-	 xml_node<>* attrNode1 = doc.allocate_node(node_element, "attribute");
-	 attrNode1->append_attribute(doc.allocate_attribute("name", "Name"));
-	 xml_node<>* dataSNode = doc.allocate_node(node_element, "data:svalue");
-	 if (i == 0)
-	 dataSNode->append_attribute(
-	 doc.allocate_attribute("value", "Pedestrian"));
-	 else if (i == 1)
-	 dataSNode->append_attribute(
-	 doc.allocate_attribute("value", "Vehicle"));
-	 else if (i == 2)
-	 dataSNode->append_attribute(
-	 doc.allocate_attribute("value", "Unknown"));
-	 attrNode1->append_node(dataSNode);
-	 objNode->append_node(attrNode1);
-
-	 // Create the second <attribute..</attribute> node
-	 xml_node<>* attrNode2 = doc.allocate_node(node_element, "attribute");
-	 attrNode2->append_attribute(doc.allocate_attribute("name", "Location"));
-
-	 // Create the <data:bbox>..</> nodes inside second <attribute>..</attribute> node
-	 for (int j = 0; j < testResponse.rows; j++) {
-	 stringstream ss;
-	 ss << testResponse.at<float>(j, 0);
-	 String label = ss.str();
-
-	 String id = objNode->first_attribute("id")->value();
-	 // If the label == id it creates the <data:bbox></data:bbox> node and add it to <attribute>..</attribute>
-	 if (label == id) {
-	 xml_node<>* dataBBNode = doc.allocate_node(node_element,
-	 "data:bbox");
-
-	 // Creates a string for each <data:bbox>..</> attribute value
-	 stringstream ss(fileNames[j]);
-	 string name;
-	 getline(ss, name, '/');
-	 getline(ss, name, '/');
-	 stringstream ss1(name);
-	 string frame, x, y, width, height;
-	 getline(ss1, frame, '_');
-	 getline(ss1, x, '_');
-	 getline(ss1, y, '_');
-	 getline(ss1, width, '_');
-	 getline(ss1, height, '_');
-	 stringstream ss2;
-	 ss2 << height;
-	 getline(ss2, height, '.');
-	 stringstream ss3;
-	 frame = frame.erase(0, frame.find_first_not_of('0'));
-	 ss3 << frame << ":" << frame;
-
-	 // Appends the attributes to the <data:bbox>..</> node
-	 dataBBNode->append_attribute(
-	 doc.allocate_attribute("framespan",
-	 doc.allocate_string(ss3.str().c_str())));
-	 ss3.str("");
-	 ss3 << height;
-	 dataBBNode->append_attribute(
-	 doc.allocate_attribute("height",
-	 doc.allocate_string(ss3.str().c_str())));
-	 ss3.str("");
-	 ss3 << width;
-	 dataBBNode->append_attribute(
-	 doc.allocate_attribute("width",
-	 doc.allocate_string(ss3.str().c_str())));
-	 ss3.str("");
-	 ss3 << x;
-	 dataBBNode->append_attribute(
-	 doc.allocate_attribute("x",
-	 doc.allocate_string(ss3.str().c_str())));
-	 ss3.str("");
-	 ss3 << y;
-	 dataBBNode->append_attribute(
-	 doc.allocate_attribute("y",
-	 doc.allocate_string(ss3.str().c_str())));
-
-	 // Appends <data:bbox>..</data:bbox> node to the second <attribute>..</attribute> node
-	 attrNode2->append_node(dataBBNode);
-	 }
-	 }
-	 objNode->append_node(attrNode2);
-	 doc.append_node(objNode);
-	 }
-
-	 // Save to file
-	 String classifier;
-	 if (!USE_MES) {
-	 if (DESCRIPTOR_TYPE == 0)
-	 classifier = "hog";
-	 else if (DESCRIPTOR_TYPE == 1)
-	 classifier = "lbp";
-	 else if (DESCRIPTOR_TYPE == 2)
-	 classifier = "bb";
-	 else if (DESCRIPTOR_TYPE == 3)
-	 classifier = "concat";
-	 } else {
-	 classifier = "mes";
-	 }
-	 stringstream sst;
-	 sst << VIDEO_NAME << "_classification/svm_" << classifier << ".xml";
-	 ofstream file_stored(sst.str().c_str());
-	 file_stored << doc;
-	 file_stored.close();
-	 doc.clear();
-	 */
+	// Save to file
+	String classifier;
+	if (!USE_MES) {
+		if (DESCRIPTOR_TYPE == 0)
+			classifier = "hog";
+		else if (DESCRIPTOR_TYPE == 1)
+			classifier = "lbp";
+		else if (DESCRIPTOR_TYPE == 2)
+			classifier = "bb";
+		else if (DESCRIPTOR_TYPE == 3)
+			classifier = "concat";
+	} else {
+		classifier = "mes";
+	}
+	stringstream sst;
+	sst << VIDEO_NAME << "_classification/svm_" << classifier << ".xml";
+	ofstream file_stored(sst.str().c_str());
+	file_stored << doc;
+	file_stored.close();
+	doc.clear();
 }
 
 void initMES(vector<vector<float> > &accuracies, CvSVM &svm_hog, CvSVM &svm_lbp,
@@ -1210,7 +1162,7 @@ void extractSamplesFromVideo(const String pathVideo, const String pathXml,
 
 				// Save the bbox crop as jpeg file
 				stringstream s;
-				s << setw(4) << setfill('0') << frame; // 0000, 0001, 0002, etc...
+				s << setw(4) << setfill('0') << frame;// 0000, 0001, 0002, etc...
 				string numFrame = s.str();
 				stringstream st;
 				st << pathSave << numFrame << "_" << x << "_" << y << "_"
