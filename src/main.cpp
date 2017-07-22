@@ -45,7 +45,11 @@ void computeLBP(Mat &featureVecMat, const vector<Mat> &img);
 void countWhitePixels(const Mat matrix, int &whitePixels);
 void convertColorFromBGR2HSV(const Mat3b &bgr, Mat3b &hsv);
 void computeBB(Mat &featureVecMat, const vector<Mat> &img);
+void computeSingleHOG(vector<float> &featureVec, const Mat &img);
+void computeSingleLBP(Mat &featureVec, const Mat &img);
+void computeSingleBB(vector<float> &featureVec, const Mat &img);
 void concatFeatureVectors(Mat &concatResult, const vector<Mat> &images);
+void singleConcatFeatureVec(Mat &concatResult, const Mat &img);
 void loadLabels(vector<int> &labels, int pedNum, int vehNum, int unkNum);
 void loadImages(vector<Mat> &images, const vector<String> paths);
 void createLabelsMat(Mat &labelsMat, vector<String> paths);
@@ -53,21 +57,29 @@ void createFeatureVectorsMat(Mat &featureVecMat, vector<String> paths);
 void calculateFinalResponse(Mat &finalResponse,
 		const vector<Mat> &votesMatrices,
 		const vector<vector<float> > &accuracies);
+void calculateSingleFinalResponse(float &finalResponse, const Mat &votesMatrix,
+		const vector<vector<float> > &accuracies);
 void createVotesMatrices(vector<Mat> &votesMatrices,
 		const vector<Mat> &testResponses);
+void createVotesMatrix(Mat &votesMatrix, const vector<float> &testResponse);
 void calculateTestResponses(vector<Mat> &testResponses, const CvSVM &svm_hog,
 		const CvSVM &svm_lbp, const CvSVM &svm_bb);
+void calculateSingleTestResponse(vector<float> &testResponse, const Mat &img,
+		const CvSVM &svm_hog, const CvSVM &svm_lbp, const CvSVM &svm_bb);
 void calculateAccuracies(vector<vector<float> > &accuracies,
 		const vector<Mat> confusionMatrices);
 void createConfusionMatrices(vector<Mat> &confusionMatrices,
 		const CvSVM &svm_hog, const CvSVM &svm_lbp, const CvSVM &svm_bb,
 		const Mat &validLabelsMat);
-void calculateEndFrames(vector<String> &endFrames, const Mat &testResponse,
-		const vector<String> &fileNames);
-void calculateStartFrames(vector<String> &startFrames, const Mat &testResponse,
-		const vector<String> &fileNames);
-void saveOutputAsXml(const Mat &testResponse);
-void computeMES(Mat &finalResponse);
+void saveOutputAsXml(const String inputPath);
+void initMES(vector<vector<float> > &accuracies, CvSVM &svm_hog, CvSVM &svm_lbp,
+		CvSVM &svm_bb);
+void computeMES(Mat &finalResponse, const vector<vector<float> > &accuracies,
+		const CvSVM &svm_hog, const CvSVM &svm_lbp, const CvSVM &svm_bb);
+void computeSingleMES(float &response, const Mat &img,
+		const vector<vector<float> > &accuracies, const CvSVM &svm_hog,
+		const CvSVM &svm_lbp, const CvSVM &svm_bb);
+void classifySamplesFromVideo(const String path);
 void classify();
 void extractSamplesFromVideo(const String pathVideo, const String pathXml,
 		const String pathSave);
@@ -222,6 +234,16 @@ void computeHOG(Mat &featureVecMat, const vector<Mat> &img) {
 	convertVectorToMatrix(hogResult, featureVecMat);
 }
 
+void computeSingleHOG(vector<float> &featureVec, const Mat &img) {
+	// The 2nd and 4th params are fixed. Choose 1st and 3th such that (1st-2nd)%3th = 0
+	HOGDescriptor hog(Size(100, 100), Size(16, 16), Size(4, 4), Size(8, 8), 9,
+			-1, 0.2, true, 64);
+	// Convert image from BGR to Gray
+	Mat grayImg;
+	cvtColor(img, grayImg, COLOR_BGR2GRAY);
+	hog.compute(grayImg, featureVec);
+}
+
 void computeLBP(Mat &featureVecMat, const vector<Mat> &img) {
 	vector<Mat> lbpResult;
 
@@ -243,6 +265,19 @@ void computeLBP(Mat &featureVecMat, const vector<Mat> &img) {
 	// Converts the vector<Mat> into a Mat of float
 	featureVecMat = Mat(lbpResult.size(), lbpResult[0].cols, CV_32FC1);
 	convertVectorToMatrix(lbpResult, featureVecMat);
+}
+
+void computeSingleLBP(Mat &featureVec, const Mat &img) {
+	// Convert image from BGR to Gray
+	Mat grayImg;
+	cvtColor(img, grayImg, COLOR_BGR2GRAY);
+	// Tiny bit of smoothing is always a good idea
+	GaussianBlur(grayImg, grayImg, Size(7, 7), 5, 3, BORDER_CONSTANT);
+	Mat lbp;
+	ELBP(grayImg, lbp, 4, 4);
+	//OLBP(img[i], lbp);
+	normalize(lbp, lbp, 0, 255, NORM_MINMAX, CV_8UC1);
+	histogram(lbp, featureVec, 256); // 256 is the number of bins of the histogram
 }
 
 void countWhitePixels(const Mat matrix, int &whitePixels) {
@@ -383,6 +418,104 @@ void computeBB(Mat &featureVecMat, const vector<Mat> &img) {
 	convertVectorToMatrix(dimensions, featureVecMat);
 }
 
+void computeSingleBB(vector<float> &featureVec, const Mat &img) {
+	// Apply Gaussian blur to remove some noise
+	Mat im;
+	GaussianBlur(img, im, Size(7, 7), 5, 3);
+
+	// Convert the image from BGR to HSV
+	Mat hsvImg;
+	cvtColor(im, hsvImg, COLOR_BGR2HSV);
+
+	// Define range of colors in HSV
+	vector<vector<Scalar> > colors;
+
+	// The colors are choosen by H-+10, S from minS to 255, V from minV to 255
+	vector<Scalar> brown;
+	Scalar lower_brown(3, 60, 95);
+	Scalar upper_brown(23, 255, 255);
+	brown.push_back(lower_brown);
+	brown.push_back(upper_brown);
+
+	vector<Scalar> green;
+	Scalar lower_green(30, 20, 40);
+	Scalar upper_green(80, 255, 255);
+	green.push_back(lower_green);
+	green.push_back(upper_green);
+
+	vector<Scalar> gray;
+	Scalar lower_gray(0, 0, 80);
+	Scalar upper_gray(255, 50, 220);
+	gray.push_back(lower_gray);
+	gray.push_back(upper_gray);
+
+	vector<Scalar> white;
+	Scalar lower_white(0, 0, 235);
+	Scalar upper_white(255, 5, 255);
+	white.push_back(lower_white);
+	white.push_back(upper_white);
+
+	colors.push_back(brown);
+	colors.push_back(green);
+	colors.push_back(gray);
+	colors.push_back(white);
+
+	int maxWhitePixels = 0;
+	Mat bestThresh;
+	for (unsigned int j = 0; j < colors.size(); j++) {
+		// Threshold the HSV image to get only background of this color
+		Mat colThresh;
+		inRange(hsvImg, colors[j].at(0), colors[j].at(1), colThresh);
+
+		int whitePixels;
+		countWhitePixels(colThresh, whitePixels);
+		if (whitePixels > maxWhitePixels) {
+			maxWhitePixels = whitePixels;
+			bestThresh = colThresh;
+		}
+	}
+
+	// Invert the mask to get the object of interest
+	bitwise_not(bestThresh, bestThresh);
+
+	// Bitwise-AND mask and original image
+	Mat res;
+	bitwise_and(im, im, res, bestThresh);
+
+	// Detect edges using Canny
+	Mat canny_mat;
+	Canny(res, canny_mat, 20, 70, 3, false);
+
+	// Find contours
+	vector<vector<Point> > contours;
+	vector<Vec4i> hierarchy;
+	findContours(canny_mat, contours, hierarchy, CV_RETR_EXTERNAL,
+			CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
+
+	// Merge all contours into one vector
+	vector<Point> merged_contours_points;
+	for (unsigned int j = 0; j < contours.size(); j++) {
+		for (unsigned int k = 0; k < contours[j].size(); k++) {
+			merged_contours_points.push_back(contours[j][k]);
+		}
+	}
+
+	if (merged_contours_points.size() > 0) {
+		// Merge all lines (contours) in one line through convex hull
+		vector<Point> hull;
+		convexHull(merged_contours_points, hull);
+
+		// Get the rotated bounding box
+		RotatedRect rotated_bounding = minAreaRect(hull);
+
+		featureVec.push_back(rotated_bounding.size.width);
+		featureVec.push_back(rotated_bounding.size.height);
+	} else {
+		featureVec.push_back(0);
+		featureVec.push_back(0);
+	}
+}
+
 void concatFeatureVectors(Mat &concatResult, const vector<Mat> &images) {
 	Mat hogResult;
 	computeHOG(hogResult, images);
@@ -390,6 +523,20 @@ void concatFeatureVectors(Mat &concatResult, const vector<Mat> &images) {
 	computeLBP(lbpResult, images);
 	Mat bbResult;
 	computeBB(bbResult, images);
+
+	Mat matArray[] = { hogResult, lbpResult, bbResult };
+	hconcat(matArray, sizeof(matArray) / sizeof(*matArray), concatResult);
+}
+
+void singleConcatFeatureVec(Mat &concatResult, const Mat &img) {
+	vector<float> hogFeatureVec;
+	computeSingleHOG(hogFeatureVec, img);
+	Mat hogResult(1, hogFeatureVec.size(), CV_32FC1, hogFeatureVec.data());
+	Mat lbpResult;
+	computeSingleLBP(lbpResult, img);
+	vector<float> bbFeatureVec;
+	computeSingleBB(bbFeatureVec, img);
+	Mat bbResult(1, bbFeatureVec.size(), CV_32FC1, bbFeatureVec.data());
 
 	Mat matArray[] = { hogResult, lbpResult, bbResult };
 	hconcat(matArray, sizeof(matArray) / sizeof(*matArray), concatResult);
@@ -467,8 +614,6 @@ void createFeatureVectorsMat(Mat &featureVecMat, vector<String> paths) {
 	}
 }
 
-// void createFeatureVector(Mat &featureVector, const Mat &img)
-
 void calculateFinalResponse(Mat &finalResponse,
 		const vector<Mat> &votesMatrices,
 		const vector<vector<float> > &accuracies) {
@@ -492,6 +637,26 @@ void calculateFinalResponse(Mat &finalResponse,
 	}
 }
 
+void calculateSingleFinalResponse(float &finalResponse, const Mat &votesMatrix,
+		const vector<vector<float> > &accuracies) {
+	float maxReliability = 0;
+	int bestClass;
+	for (int j = 0; j < NUM_CLASS; j++) {
+		float num = 0;
+		float den = 0;
+		for (int k = 0; k < 3; k++) {
+			num += votesMatrix.at<int>(j, k) * accuracies[k][j];
+			den += accuracies[k][j];
+		}
+		float reliability = num / den;
+		if (reliability >= maxReliability) {
+			maxReliability = reliability;
+			bestClass = j;
+		}
+	}
+	finalResponse = bestClass;
+}
+
 void createVotesMatrices(vector<Mat> &votesMatrices,
 		const vector<Mat> &testResponses) {
 	int numSamples = testResponses[0].rows;
@@ -502,6 +667,14 @@ void createVotesMatrices(vector<Mat> &votesMatrices,
 			votes.at<int>(testResponses[j].at<float>(i, 0), j)++;}
 		votesMatrices.push_back(votes);
 	}
+}
+
+void createVotesMatrix(Mat &votesMatrix, const vector<float> &testResponse) {
+	// votes has 3 rows as many classes and 3 columns as many classifiers (so in each column there will be only one 1)
+	Mat votes = Mat::zeros(NUM_CLASS, 3, CV_32SC1);
+	for (int j = 0; j < 3; j++) {
+		votes.at<int>(testResponse[j], j)++;}
+	votesMatrix.push_back(votes);
 }
 
 void calculateTestResponses(vector<Mat> &testResponses, const CvSVM &svm_hog,
@@ -517,12 +690,6 @@ void calculateTestResponses(vector<Mat> &testResponses, const CvSVM &svm_hog,
 			paths.push_back("test_vehicles/*.jpg");
 			paths.push_back("test_unknown/*.jpg");
 			createFeatureVectorsMat(testFeatureVecMat, paths);
-		} else {
-			vector<String> path;
-			stringstream ss;
-			ss << VIDEO_NAME << "_bboxes/*.jpg";
-			path.push_back(ss.str());
-			createFeatureVectorsMat(testFeatureVecMat, path);
 		}
 
 		// Predict the testing samples class with the classifiers
@@ -544,6 +711,43 @@ void calculateTestResponses(vector<Mat> &testResponses, const CvSVM &svm_hog,
 			break;
 		}
 		testResponses.push_back(testResponse);
+	}
+}
+
+void calculateSingleTestResponse(vector<float> &testResponse, const Mat &img,
+		const CvSVM &svm_hog, const CvSVM &svm_lbp, const CvSVM &svm_bb) {
+	for (int i = 0; i < 3; i++) {
+		DESCRIPTOR_TYPE = i;
+
+		// Predict the testing sample class with the classifiers
+		float response;
+		switch (DESCRIPTOR_TYPE) {
+		case 0: {
+			vector<float> featureVec;
+			computeSingleHOG(featureVec, img);
+			Mat featureVectorMat(1, featureVec.size(), CV_32FC1,
+					featureVec.data());
+			response = svm_hog.predict(featureVectorMat);
+		}
+			break;
+		case 1: {
+			Mat featureVec;
+			computeSingleLBP(featureVec, img);
+			response = svm_lbp.predict(featureVec);
+		}
+			break;
+		case 2: {
+			vector<float> featureVec;
+			computeSingleBB(featureVec, img);
+			Mat featureVectorMat(1, featureVec.size(), CV_32FC1,
+					featureVec.data());
+			response = svm_bb.predict(featureVectorMat);
+		}
+			break;
+		default:
+			break;
+		}
+		testResponse.push_back(response);
 	}
 }
 
@@ -607,58 +811,23 @@ void createConfusionMatrices(vector<Mat> &confusionMatrices,
 	}
 }
 
-void calculateEndFrames(vector<String> &endFrames, const Mat &testResponse,
-		const vector<String> &fileNames) {
-	for (int j = 0; j < NUM_CLASS; j++) {
-		for (int i = testResponse.rows - 1; i >= 0; i--) {
-			if (testResponse.at<float>(i, 0) == j) {
-				stringstream ss1(fileNames[i]);
-				string name;
-				getline(ss1, name, '/');
-				getline(ss1, name, '/');
-				stringstream ss2(name);
-				string frame;
-				getline(ss2, frame, '_');
-				endFrames[j] = frame.erase(0, frame.find_first_not_of('0'));
-				break;
-			}
-		}
+void saveOutputAsXml(const String inputPath) {
+	vector<Mat> images;
+	vector<String> path;
+	path.push_back(inputPath);
+	loadImages(images, path);
+
+	// Load the 4 trained classifiers
+	CvSVM svm_hog, svm_lbp, svm_bb, svm_concat;
+	svm_hog.load("svm_0_classifier.xml");
+	svm_lbp.load("svm_1_classifier.xml");
+	svm_bb.load("svm_2_classifier.xml");
+	svm_concat.load("svm_3_classifier.xml");
+
+	vector<vector<float> > accuracies;
+	if (USE_MES) {
+		initMES(accuracies, svm_hog, svm_lbp, svm_bb);
 	}
-}
-
-void calculateStartFrames(vector<String> &startFrames, const Mat &testResponse,
-		const vector<String> &fileNames) {
-	for (int j = 0; j < NUM_CLASS; j++) {
-		for (int i = 0; i < testResponse.rows; i++) {
-			if (testResponse.at<float>(i, 0) == j) {
-				stringstream ss1(fileNames[i]);
-				string name;
-				getline(ss1, name, '/');
-				getline(ss1, name, '/');
-				stringstream ss2(name);
-				string frame;
-				getline(ss2, frame, '_');
-				// Delete from 0 to the index of the first character != 0
-				startFrames[j] = frame.erase(0, frame.find_first_not_of('0'));
-				break;
-			}
-		}
-	}
-}
-
-void saveOutputAsXml(const Mat &testResponse) {
-	vector<String> fileNames;
-	stringstream ss;
-	ss << VIDEO_NAME << "_bboxes/*.jpg";
-	glob(ss.str(), fileNames, true);
-
-	// Calculate the startFrame for each class
-	vector<String> startFrames(NUM_CLASS);
-	calculateStartFrames(startFrames, testResponse, fileNames);
-
-	// Calculate the endFrame for each class
-	vector<String> endFrames(NUM_CLASS);
-	calculateEndFrames(endFrames, testResponse, fileNames);
 
 	// Crea the xml document
 	xml_document<> doc;
@@ -667,141 +836,182 @@ void saveOutputAsXml(const Mat &testResponse) {
 	declNode->append_attribute(doc.allocate_attribute("encoding", "utf-8"));
 	doc.append_node(declNode);
 
-	for (int i = 0; i < NUM_CLASS; i++) {
-		// Create <object../object> node
-		xml_node<>* objNode = doc.allocate_node(node_element, "object");
-		String startFrame = startFrames[i];
-		String endFrame = endFrames[i];
-		stringstream ss;
-		ss << startFrame << ":" << endFrame;
-		objNode->append_attribute(
-				doc.allocate_attribute("framespan",
-						doc.allocate_string(ss.str().c_str())));
-		stringstream ss2;
-		ss2 << i;
-		objNode->append_attribute(
-				doc.allocate_attribute("id",
-						doc.allocate_string(ss2.str().c_str())));
-
-		if (i == 0)
-			objNode->append_attribute(
-					doc.allocate_attribute("name", "Pedestrian"));
-		else if (i == 1)
-			objNode->append_attribute(
-					doc.allocate_attribute("name", "Vehicle"));
-		else if (i == 2)
-			objNode->append_attribute(
-					doc.allocate_attribute("name", "Unknown"));
-
-		// Create the first <attribute..</attribute> node
-		xml_node<>* attrNode1 = doc.allocate_node(node_element, "attribute");
-		attrNode1->append_attribute(doc.allocate_attribute("name", "Name"));
-		xml_node<>* dataSNode = doc.allocate_node(node_element, "data:svalue");
-		if (i == 0)
-			dataSNode->append_attribute(
-					doc.allocate_attribute("value", "Pedestrian"));
-		else if (i == 1)
-			dataSNode->append_attribute(
-					doc.allocate_attribute("value", "Vehicle"));
-		else if (i == 2)
-			dataSNode->append_attribute(
-					doc.allocate_attribute("value", "Unknown"));
-		attrNode1->append_node(dataSNode);
-		objNode->append_node(attrNode1);
-
-		// Create the second <attribute..</attribute> node
-		xml_node<>* attrNode2 = doc.allocate_node(node_element, "attribute");
-		attrNode2->append_attribute(doc.allocate_attribute("name", "Location"));
-
-		// Create the <data:bbox>..</> nodes inside second <attribute>..</attribute> node
-		for (int j = 0; j < testResponse.rows; j++) {
-			stringstream ss;
-			ss << testResponse.at<float>(j, 0);
-			String label = ss.str();
-
-			String id = objNode->first_attribute("id")->value();
-			// If the label == id it creates the <data:bbox></data:bbox> node and add it to <attribute>..</attribute>
-			if (label == id) {
-				xml_node<>* dataBBNode = doc.allocate_node(node_element,
-						"data:bbox");
-
-				// Creates a string for each <data:bbox>..</> attribute value
-				stringstream ss(fileNames[j]);
-				string name;
-				getline(ss, name, '/');
-				getline(ss, name, '/');
-				stringstream ss1(name);
-				string frame, x, y, width, height;
-				getline(ss1, frame, '_');
-				getline(ss1, x, '_');
-				getline(ss1, y, '_');
-				getline(ss1, width, '_');
-				getline(ss1, height, '_');
-				stringstream ss2;
-				ss2 << height;
-				getline(ss2, height, '.');
-				stringstream ss3;
-				frame = frame.erase(0, frame.find_first_not_of('0'));
-				ss3 << frame << ":" << frame;
-
-				// Appends the attributes to the <data:bbox>..</> node
-				dataBBNode->append_attribute(
-						doc.allocate_attribute("framespan",
-								doc.allocate_string(ss3.str().c_str())));
-				ss3.str("");
-				ss3 << height;
-				dataBBNode->append_attribute(
-						doc.allocate_attribute("height",
-								doc.allocate_string(ss3.str().c_str())));
-				ss3.str("");
-				ss3 << width;
-				dataBBNode->append_attribute(
-						doc.allocate_attribute("width",
-								doc.allocate_string(ss3.str().c_str())));
-				ss3.str("");
-				ss3 << x;
-				dataBBNode->append_attribute(
-						doc.allocate_attribute("x",
-								doc.allocate_string(ss3.str().c_str())));
-				ss3.str("");
-				ss3 << y;
-				dataBBNode->append_attribute(
-						doc.allocate_attribute("y",
-								doc.allocate_string(ss3.str().c_str())));
-
-				// Appends <data:bbox>..</data:bbox> node to the second <attribute>..</attribute> node
-				attrNode2->append_node(dataBBNode);
+	for (unsigned int i = 0; i < images.size(); i++) {
+		if (!USE_MES) {
+			switch (DESCRIPTOR_TYPE) {
+			case 0: {
+				vector<float> featureVec;
+				computeSingleHOG(featureVec, images[i]);
+				Mat featureVectorMat(1, featureVec.size(), CV_32FC1,
+						featureVec.data());
+				float label = svm_hog.predict(featureVectorMat);
 			}
+				break;
+			case 1: {
+				Mat featureVec;
+				computeSingleLBP(featureVec, images[i]);
+				float label = svm_lbp.predict(featureVec);
+			}
+				break;
+			case 2: {
+				vector<float> featureVec;
+				computeSingleBB(featureVec, images[i]);
+				Mat featureVectorMat(1, featureVec.size(), CV_32FC1,
+						featureVec.data());
+				float label = svm_bb.predict(featureVectorMat);
+			}
+				break;
+			case 3: {
+				Mat featureVecMat;
+				singleConcatFeatureVec(featureVecMat, images[i]);
+				float label = svm_concat.predict(featureVecMat);
+			}
+				break;
+			}
+		} else {
+			float label;
+			computeSingleMES(label, images[i], accuracies, svm_hog, svm_lbp,
+					svm_bb);
+			cout << label << endl;
 		}
-		objNode->append_node(attrNode2);
-		doc.append_node(objNode);
 	}
 
-	// Save to file
-	String classifier;
-	if (!USE_MES) {
-		if (DESCRIPTOR_TYPE == 0)
-			classifier = "hog";
-		else if (DESCRIPTOR_TYPE == 1)
-			classifier = "lbp";
-		else if (DESCRIPTOR_TYPE == 2)
-			classifier = "bb";
-		else if (DESCRIPTOR_TYPE == 3)
-			classifier = "concat";
-	} else {
-		classifier = "mes";
-	}
-	stringstream sst;
-	sst << VIDEO_NAME << "_classification/svm_" << classifier << ".xml";
-	ofstream file_stored(sst.str().c_str());
-	file_stored << doc;
-	file_stored.close();
-	doc.clear();
+	/*
+
+	 for (int i = 0; i < NUM_CLASS; i++) {
+	 // Create <object../object> node
+	 xml_node<>* objNode = doc.allocate_node(node_element, "object");
+	 stringstream ss;
+	 ss << startFrame << ":" << endFrame;
+	 objNode->append_attribute(
+	 doc.allocate_attribute("framespan",
+	 doc.allocate_string(ss.str().c_str())));
+	 stringstream ss2;
+	 ss2 << i;
+	 objNode->append_attribute(
+	 doc.allocate_attribute("id",
+	 doc.allocate_string(ss2.str().c_str())));
+
+	 if (i == 0)
+	 objNode->append_attribute(
+	 doc.allocate_attribute("name", "Pedestrian"));
+	 else if (i == 1)
+	 objNode->append_attribute(
+	 doc.allocate_attribute("name", "Vehicle"));
+	 else if (i == 2)
+	 objNode->append_attribute(
+	 doc.allocate_attribute("name", "Unknown"));
+
+	 // Create the first <attribute..</attribute> node
+	 xml_node<>* attrNode1 = doc.allocate_node(node_element, "attribute");
+	 attrNode1->append_attribute(doc.allocate_attribute("name", "Name"));
+	 xml_node<>* dataSNode = doc.allocate_node(node_element, "data:svalue");
+	 if (i == 0)
+	 dataSNode->append_attribute(
+	 doc.allocate_attribute("value", "Pedestrian"));
+	 else if (i == 1)
+	 dataSNode->append_attribute(
+	 doc.allocate_attribute("value", "Vehicle"));
+	 else if (i == 2)
+	 dataSNode->append_attribute(
+	 doc.allocate_attribute("value", "Unknown"));
+	 attrNode1->append_node(dataSNode);
+	 objNode->append_node(attrNode1);
+
+	 // Create the second <attribute..</attribute> node
+	 xml_node<>* attrNode2 = doc.allocate_node(node_element, "attribute");
+	 attrNode2->append_attribute(doc.allocate_attribute("name", "Location"));
+
+	 // Create the <data:bbox>..</> nodes inside second <attribute>..</attribute> node
+	 for (int j = 0; j < testResponse.rows; j++) {
+	 stringstream ss;
+	 ss << testResponse.at<float>(j, 0);
+	 String label = ss.str();
+
+	 String id = objNode->first_attribute("id")->value();
+	 // If the label == id it creates the <data:bbox></data:bbox> node and add it to <attribute>..</attribute>
+	 if (label == id) {
+	 xml_node<>* dataBBNode = doc.allocate_node(node_element,
+	 "data:bbox");
+
+	 // Creates a string for each <data:bbox>..</> attribute value
+	 stringstream ss(fileNames[j]);
+	 string name;
+	 getline(ss, name, '/');
+	 getline(ss, name, '/');
+	 stringstream ss1(name);
+	 string frame, x, y, width, height;
+	 getline(ss1, frame, '_');
+	 getline(ss1, x, '_');
+	 getline(ss1, y, '_');
+	 getline(ss1, width, '_');
+	 getline(ss1, height, '_');
+	 stringstream ss2;
+	 ss2 << height;
+	 getline(ss2, height, '.');
+	 stringstream ss3;
+	 frame = frame.erase(0, frame.find_first_not_of('0'));
+	 ss3 << frame << ":" << frame;
+
+	 // Appends the attributes to the <data:bbox>..</> node
+	 dataBBNode->append_attribute(
+	 doc.allocate_attribute("framespan",
+	 doc.allocate_string(ss3.str().c_str())));
+	 ss3.str("");
+	 ss3 << height;
+	 dataBBNode->append_attribute(
+	 doc.allocate_attribute("height",
+	 doc.allocate_string(ss3.str().c_str())));
+	 ss3.str("");
+	 ss3 << width;
+	 dataBBNode->append_attribute(
+	 doc.allocate_attribute("width",
+	 doc.allocate_string(ss3.str().c_str())));
+	 ss3.str("");
+	 ss3 << x;
+	 dataBBNode->append_attribute(
+	 doc.allocate_attribute("x",
+	 doc.allocate_string(ss3.str().c_str())));
+	 ss3.str("");
+	 ss3 << y;
+	 dataBBNode->append_attribute(
+	 doc.allocate_attribute("y",
+	 doc.allocate_string(ss3.str().c_str())));
+
+	 // Appends <data:bbox>..</data:bbox> node to the second <attribute>..</attribute> node
+	 attrNode2->append_node(dataBBNode);
+	 }
+	 }
+	 objNode->append_node(attrNode2);
+	 doc.append_node(objNode);
+	 }
+
+	 // Save to file
+	 String classifier;
+	 if (!USE_MES) {
+	 if (DESCRIPTOR_TYPE == 0)
+	 classifier = "hog";
+	 else if (DESCRIPTOR_TYPE == 1)
+	 classifier = "lbp";
+	 else if (DESCRIPTOR_TYPE == 2)
+	 classifier = "bb";
+	 else if (DESCRIPTOR_TYPE == 3)
+	 classifier = "concat";
+	 } else {
+	 classifier = "mes";
+	 }
+	 stringstream sst;
+	 sst << VIDEO_NAME << "_classification/svm_" << classifier << ".xml";
+	 ofstream file_stored(sst.str().c_str());
+	 file_stored << doc;
+	 file_stored.close();
+	 doc.clear();
+	 */
 }
 
-void computeMES(Mat &finalResponse) {
+void initMES(vector<vector<float> > &accuracies, CvSVM &svm_hog, CvSVM &svm_lbp,
+		CvSVM &svm_bb) {
 	// Load the 3 trained classifiers
-	CvSVM svm_hog, svm_lbp, svm_bb;
 	svm_hog.load("svm_0_classifier.xml");
 	svm_lbp.load("svm_1_classifier.xml");
 	svm_bb.load("svm_2_classifier.xml");
@@ -821,9 +1031,11 @@ void computeMES(Mat &finalResponse) {
 
 	// Calculate the accuracies for each class and each classifier by the confusion matrices.
 	// accuracies contains 3 vector<float> (as many as classifiers), and each vector<float> contains NUM_CLASS float.
-	vector<vector<float> > accuracies;
 	calculateAccuracies(accuracies, confusionMatrices);
+}
 
+void computeMES(Mat &finalResponse, const vector<vector<float> > &accuracies,
+		const CvSVM &svm_hog, const CvSVM &svm_lbp, const CvSVM &svm_bb) {
 	// Predict the testing samples labels with the 3 classifiers
 	vector<Mat> testResponses;
 	calculateTestResponses(testResponses, svm_hog, svm_lbp, svm_bb);
@@ -836,6 +1048,30 @@ void computeMES(Mat &finalResponse) {
 	// Calculate the best classes for each sample based on reliability of MES for each class (psi(0), psi(1) and psi(2); I choose 0,1 or 2 by argmax(psi(i)) on i)
 	finalResponse = Mat(votesMatrices.size(), 1, CV_32FC1);
 	calculateFinalResponse(finalResponse, votesMatrices, accuracies);
+}
+
+void computeSingleMES(float &response, const Mat &img,
+		const vector<vector<float> > &accuracies, const CvSVM &svm_hog,
+		const CvSVM &svm_lbp, const CvSVM &svm_bb) {
+	// Predict the testing samples labels with the 3 classifiers
+	vector<float> testResponse;
+	calculateSingleTestResponse(testResponse, img, svm_hog, svm_lbp, svm_bb);
+
+	// Calculate the vector of matrix of votes(the matrix size is 3x3, 3 classes and 3 classifiers)
+	// delta_ik(b) is the vote of k-th classifier in relation to the i-th class for the sample b (so the vote can be 0 or 1)
+	Mat votesMatrix;
+	createVotesMatrix(votesMatrix, testResponse);
+
+	// Calculate the best class based on reliability of MES for each class (psi(0), psi(1) and psi(2); I choose 0,1 or 2 by argmax(psi(i)) on i)
+	calculateSingleFinalResponse(response, votesMatrix, accuracies);
+}
+
+void classifySamplesFromVideo(const String path) {
+	if (VIDEO_CLASS_OUTPUT == 1) {
+		saveOutputAsXml(path);
+	} else {
+
+	}
 }
 
 void classify() {
@@ -869,12 +1105,6 @@ void classify() {
 			paths.push_back("test_unknown/*.jpg");
 			createFeatureVectorsMat(testFeatureVecMat, paths);
 			createLabelsMat(testLabelsMat, paths);
-		} else {
-			vector<String> path;
-			stringstream ss;
-			ss << VIDEO_NAME << "_bboxes/*.jpg";
-			path.push_back(ss.str());
-			createFeatureVectorsMat(testFeatureVecMat, path);
 		}
 
 		// Predict the testing samples class with the classifier
@@ -889,14 +1119,15 @@ void classify() {
 
 			// Print the result
 			cout << "The accuracy is " << accuracy << "%" << endl;
-		} else {
-			if (VIDEO_CLASS_OUTPUT)
-				saveOutputAsXml(testResponse);
 		}
 	} else {
+		// Init MES
+		CvSVM svm_hog, svm_lbp, svm_bb;
+		vector<vector<float> > accuracies;
+		initMES(accuracies, svm_hog, svm_lbp, svm_bb);
 		// Use MES
 		Mat finalResponse;
-		computeMES(finalResponse);
+		computeMES(finalResponse, accuracies, svm_hog, svm_lbp, svm_bb);
 
 		if (ACC_EVALUATION) {
 			// Create the matrix containing all the labels for the test samples
@@ -914,9 +1145,6 @@ void classify() {
 
 			// Print the result
 			cout << "The accuracy is " << accuracy << "%" << endl;
-		} else {
-			if (VIDEO_CLASS_OUTPUT)
-				saveOutputAsXml(finalResponse);
 		}
 	}
 }
@@ -1074,8 +1302,10 @@ void displayClassVideoMenu() {
 			cin >> DESCRIPTOR_TYPE;
 		}
 	}
+	ss.str("");
+	ss << VIDEO_NAME << "_bboxes/*.jpg";
 	cout << "Sto generando l'output. Attendi qualche secondo." << endl;
-	classify();
+	classifySamplesFromVideo(ss.str());
 	cout << "File xml generato con successo!" << endl;
 	askBackToMainMenu();
 }
@@ -1102,8 +1332,6 @@ void displayAccEvaluationMenu() {
 		cout
 				<< "Sto calcolando l'accuratezza richiesta. Attendi qualche secondo."
 				<< endl;
-		classify();
-		askBackToMainMenu();
 	} else {
 		cout
 				<< "Valutazione dell'accuratezza sul Test Set utilizzando un singolo classificatore"
@@ -1153,9 +1381,9 @@ void displayAccEvaluationMenu() {
 					<< "Sto addestrando il classificatore e calcolando l'accuratezza richiesta. Attendi qualche secondo."
 					<< endl;
 		}
-		classify();
-		askBackToMainMenu();
 	}
+	classify();
+	askBackToMainMenu();
 }
 
 void displayMainMenu() {
