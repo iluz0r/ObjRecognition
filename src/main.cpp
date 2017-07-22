@@ -22,7 +22,7 @@ using namespace std;
 using namespace rapidxml;
 
 int DESCRIPTOR_TYPE; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
-int LOAD_CLASSIFIER = 1;
+int LOAD_CLASSIFIER;
 int USE_MES; // If MES is used, DESCRIPTOR_TYPE and LOAD_CLASSIFIER are not considered
 int NUM_CLASS = 3; // Number of classes
 int ACC_EVALUATION; // When this param is 1, the system loads the samples from test_pedestrians,
@@ -1020,9 +1020,29 @@ void displayAccEvaluationMenu() {
 			cin >> DESCRIPTOR_TYPE;
 		}
 
-		cout << endl
-				<< "Sto calcolando l'accuratezza richiesta. Attendi qualche secondo."
+		cout << endl << "Scegli se addestrare il classificatore o se caricarlo da file:"
 				<< endl;
+		cout << "0. Addestra il classificatore e salvalo su file;" << endl;
+		cout << "1. Carica il classificatore da file." << endl;
+		cin >> LOAD_CLASSIFIER;
+
+		while (LOAD_CLASSIFIER < 0 || LOAD_CLASSIFIER > 1 || cin.fail()) {
+			cin.clear();
+			cin.ignore(10000, '\n');
+			cout << "Scelta errata! Scegliere un valore compreso tra 0 ed 1!"
+					<< endl;
+			cin >> LOAD_CLASSIFIER;
+		}
+
+		clearScreen();
+		cout << "Valutazione dell'accuratezza sul Test Set utilizzando un singolo classificatore" << endl << endl;
+		if (LOAD_CLASSIFIER) {
+			cout << "Sto calcolando l'accuratezza richiesta. Attendi qualche secondo." << endl;
+		} else {
+			cout << endl
+					<< "Sto addestrando il classificatore e calcolando l'accuratezza richiesta. Attendi qualche secondo."
+					<< endl;
+		}
 		classify();
 		askBackToMainMenu();
 	}
