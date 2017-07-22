@@ -1020,9 +1020,12 @@ void displayAccEvaluationMenu() {
 			cin >> DESCRIPTOR_TYPE;
 		}
 
-		cout << endl << "Scegli se addestrare il classificatore o se caricarlo da file:"
+		cout << endl
+				<< "Scegli se addestrare il classificatore o se caricarlo da file:"
 				<< endl;
-		cout << "0. Addestra il classificatore e salvalo su file;" << endl;
+		cout
+				<< "0. Addestra il classificatore e salvalo su file (WARN: il training richiede da 1 a 10 minuti a seconda del descrittore utilizzato);"
+				<< endl;
 		cout << "1. Carica il classificatore da file." << endl;
 		cin >> LOAD_CLASSIFIER;
 
@@ -1035,11 +1038,15 @@ void displayAccEvaluationMenu() {
 		}
 
 		clearScreen();
-		cout << "Valutazione dell'accuratezza sul Test Set utilizzando un singolo classificatore" << endl << endl;
+		cout
+				<< "Valutazione dell'accuratezza sul Test Set utilizzando un singolo classificatore"
+				<< endl << endl;
 		if (LOAD_CLASSIFIER) {
-			cout << "Sto calcolando l'accuratezza richiesta. Attendi qualche secondo." << endl;
+			cout
+					<< "Sto calcolando l'accuratezza richiesta. Attendi qualche secondo."
+					<< endl;
 		} else {
-			cout << endl
+			cout
 					<< "Sto addestrando il classificatore e calcolando l'accuratezza richiesta. Attendi qualche secondo."
 					<< endl;
 		}
