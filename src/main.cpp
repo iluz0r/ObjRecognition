@@ -21,12 +21,67 @@ using namespace cv;
 using namespace std;
 using namespace rapidxml;
 
-int DESCRIPTOR_TYPE = 3; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
+int DESCRIPTOR_TYPE; // {0 = hog, 1 = lbp, 2 = bb, 3 = conc}
 int LOAD_CLASSIFIER = 1;
-int USE_MES = 1; // If MES is used, DESCRIPTOR_TYPE and LOAD_CLASSIFIER are not considered
+int USE_MES; // If MES is used, DESCRIPTOR_TYPE and LOAD_CLASSIFIER are not considered
 int NUM_CLASS = 3; // Number of classes
-int ACC_EVALUATION = 0; // When this param is 1, the system loads the samples from test_pedestrians,
+int ACC_EVALUATION; // When this param is 1, the system loads the samples from test_pedestrians,
 // test_vehicles and test_unknown folders and give as output the classification accuracy
+
+void convertVectorToMatrix(const vector<vector<float> > &hogResult, Mat &mat);
+void convertVectorToMatrix(const vector<Mat> &lbpResult, Mat &mat);
+void convertVectorToMatrix(const vector<int> &labels, Mat &labelsMat);
+void SVMevaluate(Mat &testResponse, float &count, float &accuracy,
+		Mat &testLabelsMat);
+void SVMtrain(CvSVM &svm, Mat &featureVecMat, Mat &labelsMat);
+void histogram(const Mat &src, Mat &hist, int numPatterns);
+void OLBP(const Mat &src, Mat &dst);
+void ELBP(const Mat &src, Mat &dst, int radius, int neighbors);
+void computeHOG(Mat &featureVecMat, const vector<Mat> &img);
+void computeLBP(Mat &featureVecMat, const vector<Mat> &img);
+void countWhitePixels(const Mat matrix, int &whitePixels);
+void convertColorFromBGR2HSV(const Mat3b &bgr, Mat3b &hsv);
+void computeBB(Mat &featureVecMat, const vector<Mat> &img);
+void concatFeatureVectors(Mat &concatResult, const vector<Mat> &images);
+void loadLabels(vector<int> &labels, int pedNum, int vehNum, int unkNum);
+void loadImages(vector<Mat> &images, const vector<String> paths);
+void createLabelsMat(Mat &labelsMat, vector<String> paths);
+void createFeatureVectorsMat(Mat &featureVecMat, vector<String> paths);
+void calculateFinalResponse(Mat &finalResponse,
+		const vector<Mat> &votesMatrices,
+		const vector<vector<float> > &accuracies);
+void createVotesMatrices(vector<Mat> &votesMatrices,
+		const vector<Mat> &testResponses);
+void calculateTestResponses(vector<Mat> &testResponses, const CvSVM &svm_hog,
+		const CvSVM &svm_lbp, const CvSVM &svm_bb);
+void calculateAccuracies(vector<vector<float> > &accuracies,
+		const vector<Mat> confusionMatrices);
+void createConfusionMatrices(vector<Mat> &confusionMatrices,
+		const CvSVM &svm_hog, const CvSVM &svm_lbp, const CvSVM &svm_bb,
+		const Mat &validLabelsMat);
+void calculateEndFrames(vector<String> &endFrames, const Mat &testResponse,
+		const vector<String> &fileNames);
+void calculateStartFrames(vector<String> &startFrames, const Mat &testResponse,
+		const vector<String> &fileNames);
+void saveOutputAsXml(const Mat &testResponse);
+void computeMES(Mat &finalResponse);
+void classify();
+void extractSamplesFromVideo(const String pathVideo, const String pathXml,
+		const String pathSave);
+void clearScreen();
+void displayClassVideoMenu();
+void displayAccEvaluationMenu();
+void displayMainMenu();
+void askBackToMainMenu();
+
+int main(int argc, char** argv) {
+	//extractSamplesFromVideo("prova.mp4", "prova.xgtf", "prova/");
+	//classify();
+	// Open the main menu
+	displayMainMenu();
+
+	return (0);
+}
 
 void convertVectorToMatrix(const vector<vector<float> > &hogResult, Mat &mat) {
 	int featureVecSize = hogResult[0].size();
@@ -915,7 +970,7 @@ void extractSamplesFromVideo(const String pathVideo, const String pathXml,
 }
 
 void clearScreen() {
-	std::system ("clear");
+	system("clear");
 }
 
 void displayClassVideoMenu() {
@@ -925,23 +980,67 @@ void displayClassVideoMenu() {
 void displayAccEvaluationMenu() {
 	cout << "Valutazione dell'accuratezza sul Test Set" << endl << endl;
 	cout << "Scegli la modalità desiderata:" << endl;
-	cout << "0. Singolo classificatore" << endl;
-	cout << "1. MES (Sistema Multi Esperto)" << endl;
+	cout << "0. Singolo classificatore;" << endl;
+	cout << "1. MES (Sistema Multi Esperto)." << endl;
+	cin >> USE_MES;
+
+	while (USE_MES < 0 || USE_MES > 1 || cin.fail()) {
+		cin.clear();
+		cin.ignore(10000, '\n');
+		cout << "Scelta errata! Scegliere un valore compreso tra 0 ed 1!"
+				<< endl;
+		cin >> USE_MES;
+	}
+
+	clearScreen();
+	if (USE_MES) {
+		cout << "Valutazione dell'accuratezza sul Test Set utilizzando MES"
+				<< endl << endl;
+		cout
+				<< "Sto calcolando l'accuratezza richiesta. Attendi qualche secondo."
+				<< endl;
+		classify();
+		askBackToMainMenu();
+	} else {
+		cout
+				<< "Valutazione dell'accuratezza sul Test Set utilizzando un singolo classificatore"
+				<< endl << endl;
+		cout << "Scegli il descrittore da utilizzare:" << endl;
+		cout << "0. HOG (forma);" << endl;
+		cout << "1. LBP (texture);" << endl;
+		cout << "2. Dimensione Bounding Box (dimensione);" << endl;
+		cout << "3. Concatenazione HOG+LBP+DIM_BB." << endl;
+		cin >> DESCRIPTOR_TYPE;
+
+		while (DESCRIPTOR_TYPE < 0 || DESCRIPTOR_TYPE > 3 || cin.fail()) {
+			cin.clear();
+			cin.ignore(10000, '\n');
+			cout << "Scelta errata! Scegliere un valore compreso tra 0 ed 3!"
+					<< endl;
+			cin >> DESCRIPTOR_TYPE;
+		}
+
+		cout << endl
+				<< "Sto calcolando l'accuratezza richiesta. Attendi qualche secondo."
+				<< endl;
+		classify();
+		askBackToMainMenu();
+	}
 }
 
-void displayMenu() {
+void displayMainMenu() {
 	cout << "Menù principale" << endl << endl;
 	cout << "Utilizza l'applicazione in modalità:" << endl;
 	cout
-			<< "0. Classificazione di Pedoni, Veicoli e Oggetti Sconosciuti presenti in video"
+			<< "0. Classificazione di Pedoni, Veicoli e Oggetti Sconosciuti presenti in video;"
 			<< endl;
-	cout << "1. Valutazione dell'accuratezza sul Test Set" << endl;
+	cout << "1. Valutazione dell'accuratezza sul Test Set." << endl;
 	cin >> ACC_EVALUATION;
 
 	while (ACC_EVALUATION < 0 || ACC_EVALUATION > 1 || cin.fail()) {
 		cin.clear();
 		cin.ignore(10000, '\n');
-		cout << "Scelta errata! Scegliere un valore compreso tra 0 ed 1"
+		cout << "Scelta errata! Scegliere un valore compreso tra 0 ed 1!"
 				<< endl;
 		cin >> ACC_EVALUATION;
 	}
@@ -954,14 +1053,24 @@ void displayMenu() {
 	}
 }
 
-int main(int argc, char** argv) {
-	//extractSamplesFromVideo("prova.mp4", "prova.xgtf", "prova/");
-	//classify();
-	displayMenu();
+void askBackToMainMenu() {
+	int ans;
+	cout << endl << "Vuoi ritornare al menù principale?" << endl;
+	cout << "0. No, esci dal programma" << endl;
+	cout << "1. Sì." << endl;
 
-	// It's something like system("pause")
-	cin.get();
-	cin.get();
-	return (0);
+	cin >> ans;
+
+	while (ans < 0 || ans > 1 || cin.fail()) {
+		cin.clear();
+		cin.ignore(10000, '\n');
+		cout << "Scelta errata! Scegliere un valore compreso tra 0 ed 1!"
+				<< endl;
+		cin >> ans;
+	}
+
+	if (ans) {
+		clearScreen();
+		displayMainMenu();
+	}
 }
-
