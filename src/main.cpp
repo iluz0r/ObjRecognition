@@ -12,6 +12,7 @@
 
 #include <iostream>
 #include <iomanip>
+#include <string>
 
 #include <rapidxml.hpp>
 #include <rapidxml_utils.hpp>
@@ -71,14 +72,17 @@ void calculateAccuracies(vector<vector<float> > &accuracies,
 void createConfusionMatrices(vector<Mat> &confusionMatrices,
 		const CvSVM &svm_hog, const CvSVM &svm_lbp, const CvSVM &svm_bb,
 		const Mat &validLabelsMat);
-void saveOutputAsXml(const String inputPath);
-void initMES(vector<vector<float> > &accuracies, CvSVM &svm_hog, CvSVM &svm_lbp,
-		CvSVM &svm_bb);
+void initMES(vector<vector<float> > &accuracies);
 void computeMES(Mat &finalResponse, const vector<vector<float> > &accuracies,
 		const CvSVM &svm_hog, const CvSVM &svm_lbp, const CvSVM &svm_bb);
 void computeSingleMES(float &response, const Mat &img,
 		const vector<vector<float> > &accuracies, const CvSVM &svm_hog,
 		const CvSVM &svm_lbp, const CvSVM &svm_bb);
+void classifySample(const Mat &img, const vector<vector<float> > &accuracies,
+		const CvSVM &svm_hog, const CvSVM &svm_lbp, const CvSVM &svm_bb,
+		const CvSVM &svm_concat, float &label);
+void showVideoWithClassification(const String inputPath);
+void saveClassificationAsXml(const String inputPath);
 void classifySamplesFromVideo(const String path);
 void classify();
 void extractSamplesFromVideo(const String pathVideo, const String pathXml,
@@ -91,7 +95,6 @@ void askBackToMainMenu();
 
 int main(int argc, char** argv) {
 	//extractSamplesFromVideo("prova.mp4", "prova.xgtf", "prova/");
-	//classify();
 	// Open the main menu
 	displayMainMenu();
 
@@ -811,7 +814,196 @@ void createConfusionMatrices(vector<Mat> &confusionMatrices,
 	}
 }
 
-void saveOutputAsXml(const String inputPath) {
+void initMES(vector<vector<float> > &accuracies) {
+	// Load the 4 trained classifiers
+	CvSVM svm_hog, svm_lbp, svm_bb, svm_concat;
+	svm_hog.load("svm_0_classifier.xml");
+	svm_lbp.load("svm_1_classifier.xml");
+	svm_bb.load("svm_2_classifier.xml");
+
+	// Create the matrix containing all the labels for the validation samples
+	Mat validLabelsMat;
+	vector<String> paths;
+	paths.push_back("valid_pedestrians/*.jpg");
+	paths.push_back("valid_vehicles/*.jpg");
+	paths.push_back("valid_unknown/*.jpg");
+	createLabelsMat(validLabelsMat, paths);
+
+	// Create the confusion matrices for the 3 classifiers (svm_hog, svm_lbp, svm_bb)
+	vector<Mat> confusionMatrices;
+	createConfusionMatrices(confusionMatrices, svm_hog, svm_lbp, svm_bb,
+			validLabelsMat);
+
+	// Calculate the accuracies for each class and each classifier by the confusion matrices.
+	// accuracies contains 3 vector<float> (as many as classifiers), and each vector<float> contains NUM_CLASS float.
+	calculateAccuracies(accuracies, confusionMatrices);
+}
+
+void computeMES(Mat &finalResponse, const vector<vector<float> > &accuracies,
+		const CvSVM &svm_hog, const CvSVM &svm_lbp, const CvSVM &svm_bb) {
+	// Predict the testing samples labels with the 3 classifiers
+	vector<Mat> testResponses;
+	calculateTestResponses(testResponses, svm_hog, svm_lbp, svm_bb);
+
+	// Calculate the vector of matrices of votes (1 matrix of votes for each sample; the matrix size is 3x3, 3 classes and 3 classifiers)
+	// delta_ik(b) is the vote of k-th classifier in relation to the i-th class for the sample b (so the vote can be 0 or 1)
+	vector<Mat> votesMatrices;
+	createVotesMatrices(votesMatrices, testResponses);
+
+	// Calculate the best classes for each sample based on reliability of MES for each class (psi(0), psi(1) and psi(2); I choose 0,1 or 2 by argmax(psi(i)) on i)
+	finalResponse = Mat(votesMatrices.size(), 1, CV_32FC1);
+	calculateFinalResponse(finalResponse, votesMatrices, accuracies);
+}
+
+void computeSingleMES(float &response, const Mat &img,
+		const vector<vector<float> > &accuracies, const CvSVM &svm_hog,
+		const CvSVM &svm_lbp, const CvSVM &svm_bb) {
+	// Predict the testing samples labels with the 3 classifiers
+	vector<float> testResponse;
+	calculateSingleTestResponse(testResponse, img, svm_hog, svm_lbp, svm_bb);
+
+	// Calculate the vector of matrix of votes(the matrix size is 3x3, 3 classes and 3 classifiers)
+	// delta_ik(b) is the vote of k-th classifier in relation to the i-th class for the sample b (so the vote can be 0 or 1)
+	Mat votesMatrix;
+	createVotesMatrix(votesMatrix, testResponse);
+
+	// Calculate the best class based on reliability of MES for each class (psi(0), psi(1) and psi(2); I choose 0,1 or 2 by argmax(psi(i)) on i)
+	calculateSingleFinalResponse(response, votesMatrix, accuracies);
+}
+
+void classifySample(const Mat &img, const vector<vector<float> > &accuracies,
+		const CvSVM &svm_hog, const CvSVM &svm_lbp, const CvSVM &svm_bb,
+		const CvSVM &svm_concat, float &label) {
+	if (!USE_MES) {
+		switch (DESCRIPTOR_TYPE) {
+		case 0: {
+			vector<float> featureVec;
+			computeSingleHOG(featureVec, img);
+			Mat featureVectorMat(1, featureVec.size(), CV_32FC1,
+					featureVec.data());
+			label = svm_hog.predict(featureVectorMat);
+		}
+			break;
+		case 1: {
+			Mat featureVec;
+			computeSingleLBP(featureVec, img);
+			label = svm_lbp.predict(featureVec);
+		}
+			break;
+		case 2: {
+			vector<float> featureVec;
+			computeSingleBB(featureVec, img);
+			Mat featureVectorMat(1, featureVec.size(), CV_32FC1,
+					featureVec.data());
+			label = svm_bb.predict(featureVectorMat);
+		}
+			break;
+		case 3: {
+			Mat featureVecMat;
+			singleConcatFeatureVec(featureVecMat, img);
+			label = svm_concat.predict(featureVecMat);
+		}
+			break;
+		}
+	} else {
+		computeSingleMES(label, img, accuracies, svm_hog, svm_lbp, svm_bb);
+	}
+}
+
+void showVideoWithClassification(const String inputPath) {
+	// Load all the images
+	vector<Mat> images;
+	vector<String> path;
+	path.push_back(inputPath);
+	loadImages(images, path);
+
+	// Load samples from videox_bboxes/ folder
+	vector<String> fileNames;
+	glob(inputPath, fileNames, true);
+
+	// Load the 4 trained classifiers
+	CvSVM svm_hog, svm_lbp, svm_bb, svm_concat;
+	svm_hog.load("svm_0_classifier.xml");
+	svm_lbp.load("svm_1_classifier.xml");
+	svm_bb.load("svm_2_classifier.xml");
+	svm_concat.load("svm_3_classifier.xml");
+
+	// Init MES params if MES has been choosed
+	vector<vector<float> > accuracies;
+	if (USE_MES) {
+		initMES(accuracies);
+	}
+
+	// Open videox
+	stringstream sstr;
+	sstr << VIDEO_NAME << "/" << "video.mp4";
+	VideoCapture cap(sstr.str());
+	if (!cap.isOpened()) {
+		cout << "Cannot open the video file" << endl;
+		return;
+	}
+
+	// Classify on video
+	namedWindow("Video con classificazione");
+	startWindowThread();
+	Mat frameImg, resized;
+	int numFrame = 0;
+	while (cap.isOpened()) {
+		if (cap.grab()) {
+			cap.retrieve(frameImg);
+			resize(frameImg, resized, Size(960, 540));
+			// Search for the samples at this frame
+			for (unsigned int i = 0; i < fileNames.size(); i++) {
+				// Get sample file name
+				stringstream ss(fileNames[i]);
+				string name;
+				getline(ss, name, '/');
+				getline(ss, name, '/');
+				// ss1 contains the sample name
+				stringstream ss1(name);
+				// Declare frame, x, y, width and height
+				string frame, x, y, width, height;
+				getline(ss1, frame, '_');
+				frame = frame.erase(0, frame.find_first_not_of('0'));
+				int sampleFrame = atoi(frame.c_str());
+				if (sampleFrame == numFrame) {
+					getline(ss1, x, '_');
+					int xInt = atoi(x.c_str());
+					getline(ss1, y, '_');
+					int yInt = atoi(y.c_str());
+					getline(ss1, width, '_');
+					int widthInt = atoi(width.c_str());
+					getline(ss1, height, '_');
+					int heightInt = atoi(height.c_str());
+					stringstream ss2;
+					ss2 << height;
+					getline(ss2, height, '.');
+					float label;
+					classifySample(images[i], accuracies, svm_hog, svm_lbp,
+							svm_bb, svm_concat, label);
+					Scalar color;
+					if (label == 0)
+						color = Scalar(255, 0, 0);
+					else if (label == 1)
+						color = Scalar(0, 255, 0);
+					else if (label == 2)
+						color = Scalar(0, 0, 255);
+					rectangle(resized, Point(xInt / 2, yInt / 2),
+							Point(xInt / 2 + widthInt / 2,
+									yInt / 2 + heightInt / 2), color);
+				} else if (sampleFrame > numFrame) {
+					break;
+				}
+			}
+			imshow("Video con classificazione", resized);
+			waitKey(1);
+			numFrame++;
+		}
+	}
+	destroyWindow("Video con classificazione");
+}
+
+void saveClassificationAsXml(const String inputPath) {
 	vector<String> fileNames;
 	glob(inputPath, fileNames, true);
 
@@ -831,7 +1023,7 @@ void saveOutputAsXml(const String inputPath) {
 	// Init MES params if MES has been choosed
 	vector<vector<float> > accuracies;
 	if (USE_MES) {
-		initMES(accuracies, svm_hog, svm_lbp, svm_bb);
+		initMES(accuracies);
 	}
 
 	// Crea the xml document
@@ -843,42 +1035,8 @@ void saveOutputAsXml(const String inputPath) {
 
 	for (unsigned int i = 0; i < images.size(); i++) {
 		float label;
-		if (!USE_MES) {
-			switch (DESCRIPTOR_TYPE) {
-			case 0: {
-				vector<float> featureVec;
-				computeSingleHOG(featureVec, images[i]);
-				Mat featureVectorMat(1, featureVec.size(), CV_32FC1,
-						featureVec.data());
-				label = svm_hog.predict(featureVectorMat);
-			}
-				break;
-			case 1: {
-				Mat featureVec;
-				computeSingleLBP(featureVec, images[i]);
-				label = svm_lbp.predict(featureVec);
-			}
-				break;
-			case 2: {
-				vector<float> featureVec;
-				computeSingleBB(featureVec, images[i]);
-				Mat featureVectorMat(1, featureVec.size(), CV_32FC1,
-						featureVec.data());
-				label = svm_bb.predict(featureVectorMat);
-			}
-				break;
-			case 3: {
-				Mat featureVecMat;
-				singleConcatFeatureVec(featureVecMat, images[i]);
-				label = svm_concat.predict(featureVecMat);
-			}
-				break;
-			}
-		} else {
-			computeSingleMES(label, images[i], accuracies, svm_hog, svm_lbp,
-					svm_bb);
-		}
-
+		classifySample(images[i], accuracies, svm_hog, svm_lbp, svm_bb,
+				svm_concat, label);
 		string sampleClass;
 		if (label == 0)
 			sampleClass = "Pedestrian";
@@ -961,68 +1119,12 @@ void saveOutputAsXml(const String inputPath) {
 	doc.clear();
 }
 
-void initMES(vector<vector<float> > &accuracies, CvSVM &svm_hog, CvSVM &svm_lbp,
-		CvSVM &svm_bb) {
-	// Load the 3 trained classifiers
-	svm_hog.load("svm_0_classifier.xml");
-	svm_lbp.load("svm_1_classifier.xml");
-	svm_bb.load("svm_2_classifier.xml");
-
-	// Create the matrix containing all the labels for the validation samples
-	Mat validLabelsMat;
-	vector<String> paths;
-	paths.push_back("valid_pedestrians/*.jpg");
-	paths.push_back("valid_vehicles/*.jpg");
-	paths.push_back("valid_unknown/*.jpg");
-	createLabelsMat(validLabelsMat, paths);
-
-	// Create the confusion matrices for the 3 classifiers (svm_hog, svm_lbp, svm_bb)
-	vector<Mat> confusionMatrices;
-	createConfusionMatrices(confusionMatrices, svm_hog, svm_lbp, svm_bb,
-			validLabelsMat);
-
-	// Calculate the accuracies for each class and each classifier by the confusion matrices.
-	// accuracies contains 3 vector<float> (as many as classifiers), and each vector<float> contains NUM_CLASS float.
-	calculateAccuracies(accuracies, confusionMatrices);
-}
-
-void computeMES(Mat &finalResponse, const vector<vector<float> > &accuracies,
-		const CvSVM &svm_hog, const CvSVM &svm_lbp, const CvSVM &svm_bb) {
-	// Predict the testing samples labels with the 3 classifiers
-	vector<Mat> testResponses;
-	calculateTestResponses(testResponses, svm_hog, svm_lbp, svm_bb);
-
-	// Calculate the vector of matrices of votes (1 matrix of votes for each sample; the matrix size is 3x3, 3 classes and 3 classifiers)
-	// delta_ik(b) is the vote of k-th classifier in relation to the i-th class for the sample b (so the vote can be 0 or 1)
-	vector<Mat> votesMatrices;
-	createVotesMatrices(votesMatrices, testResponses);
-
-	// Calculate the best classes for each sample based on reliability of MES for each class (psi(0), psi(1) and psi(2); I choose 0,1 or 2 by argmax(psi(i)) on i)
-	finalResponse = Mat(votesMatrices.size(), 1, CV_32FC1);
-	calculateFinalResponse(finalResponse, votesMatrices, accuracies);
-}
-
-void computeSingleMES(float &response, const Mat &img,
-		const vector<vector<float> > &accuracies, const CvSVM &svm_hog,
-		const CvSVM &svm_lbp, const CvSVM &svm_bb) {
-	// Predict the testing samples labels with the 3 classifiers
-	vector<float> testResponse;
-	calculateSingleTestResponse(testResponse, img, svm_hog, svm_lbp, svm_bb);
-
-	// Calculate the vector of matrix of votes(the matrix size is 3x3, 3 classes and 3 classifiers)
-	// delta_ik(b) is the vote of k-th classifier in relation to the i-th class for the sample b (so the vote can be 0 or 1)
-	Mat votesMatrix;
-	createVotesMatrix(votesMatrix, testResponse);
-
-	// Calculate the best class based on reliability of MES for each class (psi(0), psi(1) and psi(2); I choose 0,1 or 2 by argmax(psi(i)) on i)
-	calculateSingleFinalResponse(response, votesMatrix, accuracies);
-}
-
 void classifySamplesFromVideo(const String path) {
 	if (VIDEO_CLASS_OUTPUT == 1) {
-		saveOutputAsXml(path);
+		saveClassificationAsXml(path);
+		cout << "File xml generato con successo!" << endl;
 	} else {
-
+		showVideoWithClassification(path);
 	}
 }
 
@@ -1073,10 +1175,16 @@ void classify() {
 			cout << "The accuracy is " << accuracy << "%" << endl;
 		}
 	} else {
-		// Init MES
+		// Load the 3 trained classifiers
 		CvSVM svm_hog, svm_lbp, svm_bb;
+		svm_hog.load("svm_0_classifier.xml");
+		svm_lbp.load("svm_1_classifier.xml");
+		svm_bb.load("svm_2_classifier.xml");
+
+		// Init MES params
 		vector<vector<float> > accuracies;
-		initMES(accuracies, svm_hog, svm_lbp, svm_bb);
+		initMES(accuracies);
+
 		// Use MES
 		Mat finalResponse;
 		computeMES(finalResponse, accuracies, svm_hog, svm_lbp, svm_bb);
@@ -1258,7 +1366,6 @@ void displayClassVideoMenu() {
 	ss << VIDEO_NAME << "_bboxes/*.jpg";
 	cout << "Sto generando l'output. Attendi qualche secondo." << endl;
 	classifySamplesFromVideo(ss.str());
-	cout << "File xml generato con successo!" << endl;
 	askBackToMainMenu();
 }
 
