@@ -26,7 +26,10 @@ int LOAD_CLASSIFIER;
 int USE_MES; // If MES is used, DESCRIPTOR_TYPE and LOAD_CLASSIFIER are not considered
 int NUM_CLASS = 3; // Number of classes
 int ACC_EVALUATION; // When this param is 1, the system loads the samples from test_pedestrians,
-// test_vehicles and test_unknown folders and give as output the classification accuracy
+// test_vehicles and test_unknown folders and give as output the classification accuracy. If this
+// param is 1, VIDEO_CLASS_OUTPUT is not considered.
+String VIDEO_NAME;
+int VIDEO_CLASS_OUTPUT; // {1 = generate xml, 2 = show video with classification}
 
 void convertVectorToMatrix(const vector<vector<float> > &hogResult, Mat &mat);
 void convertVectorToMatrix(const vector<Mat> &lbpResult, Mat &mat);
@@ -516,7 +519,9 @@ void calculateTestResponses(vector<Mat> &testResponses, const CvSVM &svm_hog,
 			createFeatureVectorsMat(testFeatureVecMat, paths);
 		} else {
 			vector<String> path;
-			path.push_back("video3_bboxes/*.jpg");
+			stringstream ss;
+			ss << VIDEO_NAME << "_bboxes/*.jpg";
+			path.push_back(ss.str());
 			createFeatureVectorsMat(testFeatureVecMat, path);
 		}
 
@@ -643,7 +648,9 @@ void calculateStartFrames(vector<String> &startFrames, const Mat &testResponse,
 
 void saveOutputAsXml(const Mat &testResponse) {
 	vector<String> fileNames;
-	glob("video3_bboxes/*.jpg", fileNames, true);
+	stringstream ss;
+	ss << VIDEO_NAME << "_bboxes/*.jpg";
+	glob(ss.str(), fileNames, true);
 
 	// Calculate the startFrame for each class
 	vector<String> startFrames(NUM_CLASS);
@@ -771,7 +778,22 @@ void saveOutputAsXml(const Mat &testResponse) {
 	}
 
 	// Save to file
-	ofstream file_stored("Video3_Classification/svm_mes.xml");
+	String classifier;
+	if (!USE_MES) {
+		if (DESCRIPTOR_TYPE == 0)
+			classifier = "hog";
+		else if (DESCRIPTOR_TYPE == 1)
+			classifier = "lbp";
+		else if (DESCRIPTOR_TYPE == 2)
+			classifier = "bb";
+		else if (DESCRIPTOR_TYPE == 3)
+			classifier = "concat";
+	} else {
+		classifier = "mes";
+	}
+	stringstream sst;
+	sst << VIDEO_NAME << "_classification/svm_" << classifier << ".xml";
+	ofstream file_stored(sst.str().c_str());
 	file_stored << doc;
 	file_stored.close();
 	doc.clear();
@@ -849,7 +871,9 @@ void classify() {
 			createLabelsMat(testLabelsMat, paths);
 		} else {
 			vector<String> path;
-			path.push_back("video3_bboxes/*.jpg");
+			stringstream ss;
+			ss << VIDEO_NAME << "_bboxes/*.jpg";
+			path.push_back(ss.str());
 			createFeatureVectorsMat(testFeatureVecMat, path);
 		}
 
@@ -866,7 +890,8 @@ void classify() {
 			// Print the result
 			cout << "The accuracy is " << accuracy << "%" << endl;
 		} else {
-			saveOutputAsXml(testResponse);
+			if (VIDEO_CLASS_OUTPUT)
+				saveOutputAsXml(testResponse);
 		}
 	} else {
 		// Use MES
@@ -890,12 +915,11 @@ void classify() {
 			// Print the result
 			cout << "The accuracy is " << accuracy << "%" << endl;
 		} else {
-			saveOutputAsXml(finalResponse);
+			if (VIDEO_CLASS_OUTPUT)
+				saveOutputAsXml(finalResponse);
 		}
 	}
 }
-
-// void classifyFromXml(const String pathVideo, const String pathXml)
 
 void extractSamplesFromVideo(const String pathVideo, const String pathXml,
 		const String pathSave) {
@@ -974,7 +998,86 @@ void clearScreen() {
 }
 
 void displayClassVideoMenu() {
+	cout
+			<< "Classificazione di Pedoni, Veicoli e Oggetti Sconosciuti presenti in video"
+			<< endl << endl;
+	cout << "Scegli il video su cui effettuare la classificazione:" << endl;
+	cout << "1. Video 1;" << endl;
+	cout << "2. Video 2;" << endl;
+	cout << "3. Video 3." << endl;
+	int videoNum;
+	cin >> videoNum;
 
+	while (videoNum < 1 || videoNum > 3 || cin.fail()) {
+		cin.clear();
+		cin.ignore(10000, '\n');
+		cout << "Scelta errata! Scegliere un valore compreso tra 1 e 3!"
+				<< endl;
+		cin >> videoNum;
+	}
+
+	stringstream ss;
+	ss << "video" << videoNum;
+	VIDEO_NAME = ss.str();
+
+	cout << endl << "Scegli la tipologia di output:" << endl;
+	cout << "1. Genera il file xml contenente la classificazione;" << endl;
+	cout << "2. Mostra il video con la classificazione." << endl;
+	cin >> VIDEO_CLASS_OUTPUT;
+
+	while (VIDEO_CLASS_OUTPUT < 1 || VIDEO_CLASS_OUTPUT > 2 || cin.fail()) {
+		cin.clear();
+		cin.ignore(10000, '\n');
+		cout << "Scelta errata! Scegliere un valore compreso tra 1 e 2!"
+				<< endl;
+		cin >> VIDEO_CLASS_OUTPUT;
+	}
+
+	clearScreen();
+	cout
+			<< "Classificazione di Pedoni, Veicoli e Oggetti Sconosciuti presenti in video"
+			<< endl << endl;
+	cout << "Scegli la modalità desiderata:" << endl;
+	cout << "0. Singolo classificatore;" << endl;
+	cout << "1. MES (Sistema Multi Esperto)." << endl;
+	cin >> USE_MES;
+
+	while (USE_MES < 0 || USE_MES > 1 || cin.fail()) {
+		cin.clear();
+		cin.ignore(10000, '\n');
+		cout << "Scelta errata! Scegliere un valore compreso tra 0 ed 1!"
+				<< endl;
+		cin >> USE_MES;
+	}
+
+	clearScreen();
+	if (USE_MES) {
+		cout
+				<< "Classificazione di Pedoni, Veicoli e Oggetti Sconosciuti presenti in video utilizzando MES"
+				<< endl << endl;
+	} else {
+		cout
+				<< "Classificazione di Pedoni, Veicoli e Oggetti Sconosciuti presenti in video utilizzando un singolo classificatore"
+				<< endl << endl;
+		cout << "Scegli il descrittore da utilizzare:" << endl;
+		cout << "0. HOG (forma);" << endl;
+		cout << "1. LBP (texture);" << endl;
+		cout << "2. Dimensione Bounding Box (dimensione);" << endl;
+		cout << "3. Concatenazione HOG+LBP+DIM_BB." << endl;
+		cin >> DESCRIPTOR_TYPE;
+
+		while (DESCRIPTOR_TYPE < 0 || DESCRIPTOR_TYPE > 3 || cin.fail()) {
+			cin.clear();
+			cin.ignore(10000, '\n');
+			cout << "Scelta errata! Scegliere un valore compreso tra 0 ed 3!"
+					<< endl;
+			cin >> DESCRIPTOR_TYPE;
+		}
+	}
+	cout << "Sto generando l'output. Attendi qualche secondo." << endl;
+	classify();
+	cout << "File xml generato con successo!" << endl;
+	askBackToMainMenu();
 }
 
 void displayAccEvaluationMenu() {
@@ -1076,6 +1179,7 @@ void displayMainMenu() {
 	if (ACC_EVALUATION) {
 		displayAccEvaluationMenu();
 	} else {
+		LOAD_CLASSIFIER = 1;
 		displayClassVideoMenu();
 	}
 }
