@@ -613,10 +613,13 @@ void saveOutputAsXml(const Mat &testResponse) {
 		stringstream ss;
 		ss << startFrame << ":" << endFrame;
 		objNode->append_attribute(
-				doc.allocate_attribute("framespan", doc.allocate_string(ss.str().c_str())));
+				doc.allocate_attribute("framespan",
+						doc.allocate_string(ss.str().c_str())));
 		stringstream ss2;
 		ss2 << i;
-		objNode->append_attribute(doc.allocate_attribute("id", doc.allocate_string(ss2.str().c_str())));
+		objNode->append_attribute(
+				doc.allocate_attribute("id",
+						doc.allocate_string(ss2.str().c_str())));
 
 		if (i == 0)
 			objNode->append_attribute(
@@ -911,9 +914,54 @@ void extractSamplesFromVideo(const String pathVideo, const String pathXml,
 	}
 }
 
+void clearScreen() {
+	std::system ("clear");
+}
+
+void displayClassVideoMenu() {
+
+}
+
+void displayAccEvaluationMenu() {
+	cout << "Valutazione dell'accuratezza sul Test Set" << endl << endl;
+	cout << "Scegli la modalità desiderata:" << endl;
+	cout << "0. Singolo classificatore" << endl;
+	cout << "1. MES (Sistema Multi Esperto)" << endl;
+}
+
+void displayMenu() {
+	cout << "Menù principale" << endl << endl;
+	cout << "Utilizza l'applicazione in modalità:" << endl;
+	cout
+			<< "0. Classificazione di Pedoni, Veicoli e Oggetti Sconosciuti presenti in video"
+			<< endl;
+	cout << "1. Valutazione dell'accuratezza sul Test Set" << endl;
+	cin >> ACC_EVALUATION;
+
+	while (ACC_EVALUATION < 0 || ACC_EVALUATION > 1 || cin.fail()) {
+		cin.clear();
+		cin.ignore(10000, '\n');
+		cout << "Scelta errata! Scegliere un valore compreso tra 0 ed 1"
+				<< endl;
+		cin >> ACC_EVALUATION;
+	}
+
+	clearScreen();
+	if (ACC_EVALUATION) {
+		displayAccEvaluationMenu();
+	} else {
+		displayClassVideoMenu();
+	}
+}
+
 int main(int argc, char** argv) {
 	//extractSamplesFromVideo("prova.mp4", "prova.xgtf", "prova/");
-	classify();
+	//classify();
+	displayMenu();
+
+	// It's something like system("pause")
+	cin.get();
+	cin.get();
 	return (0);
 }
 
