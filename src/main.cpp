@@ -982,15 +982,23 @@ void showVideoWithClassification(const String inputPath) {
 					classifySample(images[i], accuracies, svm_hog, svm_lbp,
 							svm_bb, svm_concat, label);
 					Scalar color;
-					if (label == 0)
+					String result;
+					if (label == 0){
 						color = Scalar(255, 0, 0);
-					else if (label == 1)
+						result = "Pedestrian";
+					}
+					else if (label == 1){
 						color = Scalar(0, 255, 0);
-					else if (label == 2)
+						result = "Car";
+					}
+					else if (label == 2){
 						color = Scalar(0, 0, 255);
+						result = "Unknown";
+					}
+					putText(resized, result, Point(xInt / 2, yInt / 2), FONT_HERSHEY_PLAIN, 2.0, color, 2.0, 8);
 					rectangle(resized, Point(xInt / 2, yInt / 2),
 							Point(xInt / 2 + widthInt / 2,
-									yInt / 2 + heightInt / 2), color);
+									yInt / 2 + heightInt / 2), color, 3);
 				} else if (sampleFrame > numFrame) {
 					break;
 				}
